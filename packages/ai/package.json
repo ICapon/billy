@@ -17,7 +17,28 @@
     "name": "ai",
     "tags": [
       "scope:ai"
-    ]
+    ],
+    "targets": {
+      "test": {
+        "options": {
+          "env": {
+            "NODE_OPTIONS": "--experimental-vm-modules"
+          }
+        }
+      }
+    }
   },
-  "dependencies": {}
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.135.0",
+    "@langchain/textsplitters": "^1.0.2",
+    "@napi-rs/canvas": "^1.0.11",
+    "@org/shared": "workspace:^",
+    "@tesseract.js-data/eng": "^1.0.0",
+    "@tesseract.js-data/spa": "^1.0.0",
+    "exceljs": "^4.4.0",
+    "heic-convert": "^2.1.0",
+    "tesseract.js": "^7.0.0",
+    "unpdf": "^1.9.0",
+    "zod": "^4.6.7"
+  }
 }
