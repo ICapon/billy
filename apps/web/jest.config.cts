@@ -19,6 +19,11 @@ const jestConfig = createJestConfig(config);
 
 module.exports = async () => {
   const resolved = await jestConfig();
+  // HeroUI (and its react-aria deps) ship ESM only; let SWC transform them.
+  resolved.transformIgnorePatterns = [
+    '/node_modules/(?!(?:\\.pnpm/[^/]+/node_modules/)?(?:@heroui|@react-aria|@react-stately|@react-types|@internationalized|tailwind-variants|tailwind-merge)/)',
+    '^.+\\.module\\.(css|sass|scss)$',
+  ];
   // Disable SWC path alias resolution — handled by Nx jest resolver.
   for (const value of Object.values(resolved.transform)) {
     if (Array.isArray(value) && value[1]?.resolvedBaseUrl) {

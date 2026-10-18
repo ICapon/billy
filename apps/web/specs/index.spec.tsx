@@ -1,10 +1,13 @@
-import React from 'react';
-import { render } from '@testing-library/react';
 import Page from '../src/app/page';
 
+const redirect = jest.fn();
+jest.mock('next/navigation', () => ({
+  redirect: (url: string) => redirect(url),
+}));
+
 describe('Page', () => {
-  it('should render successfully', () => {
-    const { baseElement } = render(<Page />);
-    expect(baseElement).toBeTruthy();
+  it('redirects to the dashboard', () => {
+    Page();
+    expect(redirect).toHaveBeenCalledWith('/dashboard');
   });
 });

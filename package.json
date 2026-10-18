@@ -36,6 +36,7 @@
     "@swc/core": "1.15.8",
     "@swc/helpers": "0.5.18",
     "@swc/jest": "~0.2.38",
+    "@tailwindcss/postcss": "^4.3.3",
     "@testing-library/dom": "10.4.0",
     "@testing-library/react": "16.3.0",
     "@types/jest": "~30.0.0",
@@ -54,7 +55,9 @@
     "jest-environment-node": "~30.3.0",
     "jest-util": "~30.3.0",
     "nx": "23.2.0",
+    "postcss": "^8.5.30",
     "prettier": "^3.8.1",
+    "tailwindcss": "^4.3.3",
     "ts-jest": "^29.4.7",
     "ts-node": "10.9.1",
     "tslib": "^2.3.0",
@@ -72,6 +75,8 @@
     ]
   },
   "dependencies": {
+    "@heroui/react": "^3.2.6",
+    "@heroui/styles": "^3.2.6",
     "@nestjs/common": "^11.0.0",
     "@nestjs/core": "^11.0.0",
     "@nestjs/platform-express": "^11.0.0",
