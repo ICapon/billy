@@ -4,3 +4,6 @@
 /.nx/cache
 /.nx/workspace-data
 .nx/self-healing
+# Generated files (pnpm manages the lockfile; `pnpm openapi` writes the API spec)
+pnpm-lock.yaml
+/apps/api/openapi
