@@ -75,6 +75,11 @@
         "options": {
           "passWithNoTests": true
         }
+      },
+      "docker:build": {
+        "dependsOn": [
+          "prune"
+        ]
       }
     },
     "tags": [

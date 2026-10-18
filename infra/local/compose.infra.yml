@@ -1,3 +1,4 @@
+# Backing services (Postgres + pgvector, Redis, S3). Can run on its own for `nx serve` dev.
 name: billy-local
 
 services:
@@ -8,7 +9,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-billy}
       POSTGRES_DB: ${POSTGRES_DB:-billy}
     ports:
-      - '5432:5432'
+      - '${POSTGRES_PORT:-5442}:5432'
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
@@ -21,7 +22,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - '6379:6379'
+      - '${REDIS_PORT:-6379}:6379'
     volumes:
       - redis-data:/data
     healthcheck:
@@ -30,19 +31,23 @@ services:
       timeout: 5s
       retries: 10
 
-  minio:
-    image: minio/minio:latest
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-billy}
-      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-billybilly}
+  # S3-compatible object storage. MinIO's community images are no longer published,
+  # so we use SeaweedFS (same S3 API/SDK; swap for R2/S3 in staging/prod).
+  s3:
+    image: chrislusf/seaweedfs:latest
+    command: server -dir=/data -s3 -s3.port=9000 -s3.config=/etc/seaweedfs/s3.json
     ports:
-      - '9000:9000'
-      - '9001:9001'
+      - '${S3_PORT:-9100}:9000'
     volumes:
-      - minio-data:/data
+      - s3-data:/data
+      - ./s3/s3.json:/etc/seaweedfs/s3.json:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'nc -z 127.0.0.1 9000']
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
 volumes:
   postgres-data:
   redis-data:
-  minio-data:
+  s3-data:

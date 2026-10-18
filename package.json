@@ -3,10 +3,15 @@
   "version": "0.0.0",
   "license": "MIT",
   "scripts": {
-    "infra:up": "docker compose -f infra/local/docker-compose.yml --env-file .env up -d",
-    "infra:down": "docker compose -f infra/local/docker-compose.yml --env-file .env down",
-    "infra:logs": "docker compose -f infra/local/docker-compose.yml --env-file .env logs -f",
-    "infra:reset": "docker compose -f infra/local/docker-compose.yml --env-file .env down -v"
+    "env:init": "test -f .env || cp .env.example .env",
+    "images:build": "nx run-many -t docker:build",
+    "compose:local": "pnpm env:init && docker compose --env-file .env -f infra/local/compose.infra.yml -f infra/local/compose.services.yml",
+    "start": "pnpm images:build && pnpm compose:local up -d --wait",
+    "stop": "pnpm compose:local down",
+    "reset": "pnpm compose:local down -v --remove-orphans && pnpm start",
+    "logs": "pnpm compose:local logs -f",
+    "infra:up": "pnpm env:init && docker compose --env-file .env -f infra/local/compose.infra.yml up -d --wait",
+    "infra:down": "docker compose --env-file .env -f infra/local/compose.infra.yml down"
   },
   "private": true,
   "devDependencies": {
@@ -15,6 +20,7 @@
     "@nestjs/testing": "^11.0.0",
     "@next/eslint-plugin-next": "^16.1.6",
     "@nx/devkit": "23.2.0",
+    "@nx/docker": "23.2.0",
     "@nx/eslint": "23.2.0",
     "@nx/eslint-plugin": "23.2.0",
     "@nx/jest": "23.2.0",
