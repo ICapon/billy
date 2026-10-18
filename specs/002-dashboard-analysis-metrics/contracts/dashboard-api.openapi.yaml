@@ -1,0 +1,139 @@
+# Design-time reference. After implementation the source of truth is
+# apps/api/openapi/openapi.{json,yaml}, generated with `pnpm openapi`.
+openapi: 3.0.3
+info:
+  title: Billy Dashboard API (additions)
+  version: 0.2.0
+  description: >
+    Read-only endpoints added for the dashboard. All data belongs to the single configured
+    business owner. Finance, products and cost reuse /api/records/totals, /api/records/products
+    and /api/costs/summary from feature 001.
+paths:
+  /api/dashboard/activity:
+    get:
+      tags: [dashboard]
+      summary: File activity for a period
+      description: >
+        Files are counted by upload date inside the period (inclusive, UTC). The series is
+        zero-filled and bucketed by day (periods up to 31 days) or week.
+      parameters:
+        - {
+            name: from,
+            in: query,
+            required: true,
+            schema: { type: string, format: date },
+          }
+        - {
+            name: to,
+            in: query,
+            required: true,
+            schema: { type: string, format: date },
+          }
+      responses:
+        '200':
+          description: Activity summary
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ActivitySummary' }
+        '400': { description: Missing/invalid dates or from after to }
+  /api/dashboard/attention:
+    get:
+      tags: [dashboard]
+      summary: Items that need the owner's attention (not period based)
+      responses:
+        '200':
+          description: Attention counters
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AttentionItems' }
+  /api/records/products:
+    get:
+      tags: [records]
+      summary: Purchased or sold products (change)
+      description: Adds the optional `limit` parameter; results stay ordered by total, largest first.
+      parameters:
+        - {
+            name: direction,
+            in: query,
+            required: true,
+            schema: { type: string, enum: [purchase, sale] },
+          }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - {
+            name: limit,
+            in: query,
+            description: Maximum number of products (1-100),
+            schema: { type: integer, minimum: 1, maximum: 100 },
+          }
+      responses:
+        '200': { description: Aggregated products (unchanged shape) }
+components:
+  schemas:
+    ActivitySummary:
+      type: object
+      required:
+        [
+          from,
+          to,
+          bucket,
+          counts,
+          total,
+          finished,
+          successRate,
+          avgAnalysisSeconds,
+          series,
+          byMethod,
+        ]
+      properties:
+        from: { type: string, format: date }
+        to: { type: string, format: date }
+        bucket: { type: string, enum: [day, week] }
+        counts:
+          type: object
+          required:
+            [received, processing, queuedLimit, completed, needsReview, failed]
+          properties:
+            received: { type: integer, minimum: 0 }
+            processing: { type: integer, minimum: 0 }
+            queuedLimit: { type: integer, minimum: 0 }
+            completed: { type: integer, minimum: 0 }
+            needsReview: { type: integer, minimum: 0 }
+            failed: { type: integer, minimum: 0 }
+        total: { type: integer, minimum: 0 }
+        finished: { type: integer, minimum: 0 }
+        successRate: { type: number, minimum: 0, maximum: 1, nullable: true }
+        avgAnalysisSeconds: { type: number, minimum: 0, nullable: true }
+        series:
+          type: array
+          items:
+            type: object
+            required: [bucketStart, uploaded, finished]
+            properties:
+              bucketStart: { type: string, format: date }
+              uploaded: { type: integer, minimum: 0 }
+              finished: { type: integer, minimum: 0 }
+        byMethod:
+          type: object
+          required: [digital, ocr, vision]
+          properties:
+            digital: { type: integer, minimum: 0 }
+            ocr: { type: integer, minimum: 0 }
+            vision: { type: integer, minimum: 0 }
+    AttentionItems:
+      type: object
+      required:
+        [needsReview, failed, queuedLimit, pendingDuplicates, unconfirmed]
+      properties:
+        needsReview: { type: integer, minimum: 0 }
+        failed: { type: integer, minimum: 0 }
+        queuedLimit: { type: integer, minimum: 0 }
+        pendingDuplicates: { type: integer, minimum: 0 }
+        unconfirmed:
+          type: array
+          items:
+            type: object
+            required: [currency, amountMinor]
+            properties:
+              currency: { type: string, minLength: 3, maxLength: 3 }
+              amountMinor: { type: integer }
