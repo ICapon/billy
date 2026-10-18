@@ -80,6 +80,28 @@
         "dependsOn": [
           "prune"
         ]
+      },
+      "openapi": {
+        "executor": "nx:run-commands",
+        "cache": false,
+        "options": {
+          "command": "node -r @swc-node/register apps/api/scripts/generate-openapi.ts",
+          "cwd": "{workspaceRoot}",
+          "env": {
+            "SWC_NODE_PROJECT": "apps/api/tsconfig.app.json"
+          }
+        }
+      },
+      "openapi-check": {
+        "executor": "nx:run-commands",
+        "cache": false,
+        "options": {
+          "command": "node -r @swc-node/register apps/api/scripts/generate-openapi.ts --check",
+          "cwd": "{workspaceRoot}",
+          "env": {
+            "SWC_NODE_PROJECT": "apps/api/tsconfig.app.json"
+          }
+        }
       }
     },
     "tags": [
@@ -87,14 +109,32 @@
     ]
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1152.0",
+    "@aws-sdk/lib-storage": "^3.1152.0",
     "@nestjs/common": "^11.0.0",
     "@nestjs/core": "^11.0.0",
     "@nestjs/platform-express": "^11.0.0",
+    "@nestjs/swagger": "^11.4.7",
+    "@org/ai": "workspace:^",
+    "@org/db": "workspace:^",
+    "@org/shared": "workspace:^",
+    "bullmq": "^6.3.16",
+    "busboy": "^1.6.0",
+    "ioredis": "^6.0.0",
+    "nestjs-zod": "^5.5.0",
+    "pg": "^8.23.1",
     "reflect-metadata": "^0.2.0",
     "rxjs": "^7.8.0",
-    "tslib": "^2.3.0"
+    "tslib": "^2.3.0",
+    "typeorm": "^1.1.2",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@nestjs/testing": "^11.0.0"
+    "@nestjs/testing": "^11.0.0",
+    "@types/busboy": "^1.5.5",
+    "@types/express": "^5.0.6",
+    "@types/multer": "^2.3.0",
+    "@types/pg": "^8.23.1",
+    "yaml": "^2.9.1"
   }
 }
