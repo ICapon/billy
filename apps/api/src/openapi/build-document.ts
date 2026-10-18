@@ -20,6 +20,7 @@ export function buildOpenApiDocument(app: INestApplication): OpenAPIObject {
     .addTag('records', 'Extracted transactions, totals and product lists')
     .addTag('duplicates', 'Likely duplicate transactions across files')
     .addTag('costs', 'Processing cost summary and limit status')
+    .addTag('dashboard', 'File activity and pending items for the dashboard')
     .build();
   return cleanupOpenApiDoc(SwaggerModule.createDocument(app, config));
 }

@@ -377,6 +377,7 @@ export function recordsRepository(db: Database, ownerId: string) {
       direction: LineDirection;
       from?: string;
       to?: string;
+      limit?: number;
     }): Promise<ProductRow[]> {
       const query = db
         .getRepository(LineItemEntity)
@@ -397,6 +398,7 @@ export function recordsRepository(db: Database, ownerId: string) {
         .groupBy('li.product_key')
         .addGroupBy('t.currency')
         .orderBy('SUM(li.total_minor)', 'DESC')
+        .limit(params.limit)
         .getRawMany<{
           product_name: string;
           currency: string;

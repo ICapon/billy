@@ -124,6 +124,31 @@ describe('Products (integration)', () => {
     expect(rows[0].totalMinor).toBe(700);
   });
 
+  run(
+    'keeps only the products with the largest totals when limit is given',
+    async (app) => {
+      const top = await products(app, 'direction=purchase&limit=1');
+      expect(top).toHaveLength(1);
+      expect(top[0].productName.toLowerCase()).toBe('harina');
+      const all = await products(app, 'direction=purchase');
+      expect(all.length).toBeGreaterThan(1);
+      expect(
+        (
+          await fetch(
+            `${app.base}/api/records/products?direction=purchase&limit=0`,
+          )
+        ).status,
+      ).toBe(400);
+      expect(
+        (
+          await fetch(
+            `${app.base}/api/records/products?direction=purchase&limit=101`,
+          )
+        ).status,
+      ).toBe(400);
+    },
+  );
+
   run('requires a valid direction', async (app) => {
     expect((await fetch(`${app.base}/api/records/products`)).status).toBe(400);
     expect(

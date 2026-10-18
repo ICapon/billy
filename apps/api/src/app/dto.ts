@@ -1,4 +1,7 @@
 import {
+  activityQuerySchema,
+  activitySummarySchema,
+  attentionItemsSchema,
   businessFileDetailSchema,
   businessFileSchema,
   costSummarySchema,
@@ -50,6 +53,10 @@ export class DuplicateCandidateDto extends createZodDto(
   duplicateCandidateSchema,
 ) {}
 export class ResolveDuplicateDto extends createZodDto(resolveDuplicateSchema) {}
+
+export class ActivityQueryDto extends createZodDto(activityQuerySchema) {}
+export class ActivitySummaryDto extends createZodDto(activitySummarySchema) {}
+export class AttentionItemsDto extends createZodDto(attentionItemsSchema) {}
 
 export class CostsQueryDto extends createZodDto(costsQuerySchema) {}
 export class CostSummaryDto extends createZodDto(costSummarySchema) {}

@@ -119,6 +119,11 @@ export class RecordsController {
     required: false,
     description: 'Inclusive end date (YYYY-MM-DD)',
   })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: 'Keep only the N products with the largest totals (1-100)',
+  })
   @ZodResponse({ type: [ProductRowDto] })
   products(@Query() query: ProductsQueryDto) {
     return this.records.products(query);

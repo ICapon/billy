@@ -1,6 +1,7 @@
 'use client';
 
 import { Card } from '@heroui/react';
+import { validatePeriod } from '@org/shared';
 import {
   transactionCategories,
   type ProductRow,
@@ -8,6 +9,7 @@ import {
   type TransactionCategory,
   type TransactionKind,
 } from '@org/shared';
+import { useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { getProducts, getTotals } from '../lib/files-api';
 import { categoryLabels, formatMoney } from '../lib/format';
@@ -54,7 +56,15 @@ const inputClass =
   'rounded-lg border border-separator bg-surface px-2.5 py-1.5 text-sm outline-none focus:border-accent';
 
 export function RecordsExplorer() {
-  const [range, setRange] = useState(defaultRange);
+  // The dashboard links here with ?from=&to=; anything invalid falls back to the default range
+  const params = useSearchParams();
+  const [range, setRange] = useState(() => {
+    const from = params.get('from') ?? '';
+    const to = params.get('to') ?? '';
+    return validatePeriod({ from, to }) === null
+      ? { from, to }
+      : defaultRange();
+  });
   const [groupBy, setGroupBy] = useState<'week' | 'month'>('week');
   const [scope, setScope] = useState<Scope>('all');
   const [totals, setTotals] = useState<TotalsRow[] | null>(null);

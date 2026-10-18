@@ -77,3 +77,34 @@ export function formatMoney(amountMinor: number, currency: string): string {
     return `${(amountMinor / 100).toFixed(2)} ${currency}`;
   }
 }
+
+const UTC_SHORT = { day: 'numeric', month: 'short', timeZone: 'UTC' } as const;
+
+/** "12 oct" for a bucket start (UTC date). */
+export function formatShortDate(iso: string): string {
+  return new Date(`${iso}T00:00:00Z`).toLocaleDateString('es', UTC_SHORT);
+}
+
+/** "18 sep – 18 oct 2026" */
+export function formatPeriod(from: string, to: string): string {
+  const year = new Date(`${to}T00:00:00Z`).getUTCFullYear();
+  return `${formatShortDate(from)} – ${formatShortDate(to)} ${year}`;
+}
+
+export function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${Math.round(seconds)} s`;
+  if (seconds < 3600) {
+    const minutes = Math.floor(seconds / 60);
+    const rest = Math.round(seconds % 60);
+    return rest ? `${minutes} min ${rest} s` : `${minutes} min`;
+  }
+  const hours = Math.floor(seconds / 3600);
+  return `${hours} h ${Math.round((seconds % 3600) / 60)} min`;
+}
+
+export function formatPercent(fraction: number): string {
+  return `${Math.round(fraction * 100)} %`;
+}
+
+export const limitReachedMessage =
+  'Se alcanzó el límite mensual. Los archivos nuevos se guardan como «En cola (límite alcanzado)» y se analizan al aumentar el límite o al empezar el mes siguiente.';

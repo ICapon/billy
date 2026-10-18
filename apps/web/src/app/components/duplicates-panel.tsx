@@ -77,67 +77,69 @@ export function DuplicatesPanel() {
   if (pairs.length === 0 && !error) return null;
 
   return (
-    <Card>
-      <Card.Header>
-        <Card.Title>Posibles duplicados ({pairs.length})</Card.Title>
-      </Card.Header>
-      <Card.Content className="flex flex-col gap-4">
-        <p className="text-sm text-muted">
-          Estos registros de archivos distintos tienen la misma fecha, monto y
-          contraparte. Si son la misma operación, fusiónalos para que cuente una
-          sola vez.
-        </p>
-        {error && (
-          <p role="alert" className="text-sm text-danger">
-            {error}
+    <div id="duplicados">
+      <Card>
+        <Card.Header>
+          <Card.Title>Posibles duplicados ({pairs.length})</Card.Title>
+        </Card.Header>
+        <Card.Content className="flex flex-col gap-4">
+          <p className="text-sm text-muted">
+            Estos registros de archivos distintos tienen la misma fecha, monto y
+            contraparte. Si son la misma operación, fusiónalos para que cuente
+            una sola vez.
           </p>
-        )}
-        {pairs.map((pair) => (
-          <div
-            key={pair.id}
-            className="flex flex-col gap-3 rounded-xl border border-separator p-3"
-          >
-            <div className="grid gap-3 sm:grid-cols-2">
-              <RecordSummary record={pair.a} label="Registro A" />
-              <RecordSummary record={pair.b} label="Registro B" />
+          {error && (
+            <p role="alert" className="text-sm text-danger">
+              {error}
+            </p>
+          )}
+          {pairs.map((pair) => (
+            <div
+              key={pair.id}
+              className="flex flex-col gap-3 rounded-xl border border-separator p-3"
+            >
+              <div className="grid gap-3 sm:grid-cols-2">
+                <RecordSummary record={pair.a} label="Registro A" />
+                <RecordSummary record={pair.b} label="Registro B" />
+              </div>
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  isDisabled={busyId === pair.id}
+                  onPress={() => void resolve(pair.id, { action: 'keep_both' })}
+                >
+                  Conservar ambos
+                </Button>
+                <Button
+                  size="sm"
+                  isDisabled={busyId === pair.id}
+                  onPress={() =>
+                    void resolve(pair.id, {
+                      action: 'merge',
+                      keepTransactionId: pair.a.id,
+                    })
+                  }
+                >
+                  Fusionar (conservar A)
+                </Button>
+                <Button
+                  size="sm"
+                  isDisabled={busyId === pair.id}
+                  onPress={() =>
+                    void resolve(pair.id, {
+                      action: 'merge',
+                      keepTransactionId: pair.b.id,
+                    })
+                  }
+                >
+                  Fusionar (conservar B)
+                </Button>
+              </div>
             </div>
-            <div className="flex flex-wrap justify-end gap-2">
-              <Button
-                size="sm"
-                variant="secondary"
-                isDisabled={busyId === pair.id}
-                onPress={() => void resolve(pair.id, { action: 'keep_both' })}
-              >
-                Conservar ambos
-              </Button>
-              <Button
-                size="sm"
-                isDisabled={busyId === pair.id}
-                onPress={() =>
-                  void resolve(pair.id, {
-                    action: 'merge',
-                    keepTransactionId: pair.a.id,
-                  })
-                }
-              >
-                Fusionar (conservar A)
-              </Button>
-              <Button
-                size="sm"
-                isDisabled={busyId === pair.id}
-                onPress={() =>
-                  void resolve(pair.id, {
-                    action: 'merge',
-                    keepTransactionId: pair.b.id,
-                  })
-                }
-              >
-                Fusionar (conservar B)
-              </Button>
-            </div>
-          </div>
-        ))}
-      </Card.Content>
-    </Card>
+          ))}
+        </Card.Content>
+      </Card>
+    </div>
   );
 }

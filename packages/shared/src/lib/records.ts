@@ -162,6 +162,8 @@ export const productsQuerySchema = z.object({
   direction: lineDirectionSchema,
   from: z.iso.date().optional(),
   to: z.iso.date().optional(),
+  /** Keep only the products with the largest totals. */
+  limit: z.coerce.number().int().min(1).max(100).optional(),
 });
 export type ProductsQuery = z.infer<typeof productsQuerySchema>;
 

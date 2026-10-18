@@ -169,7 +169,6 @@ export function FileDetail({ id }: { id: string }) {
           <Card.Content>
             {file.mimeType.startsWith('image/') &&
             !file.mimeType.includes('hei') ? (
-              // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={downloadUrl(file.id, true)}
                 alt={file.originalName}

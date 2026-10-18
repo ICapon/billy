@@ -1,8 +1,9 @@
 'use client';
 
 import { Button, Card } from '@heroui/react';
-import type { BusinessFile } from '@org/shared';
+import { fileStatusSchema, type BusinessFile } from '@org/shared';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { deleteFile, downloadUrl, listFiles } from '../lib/files-api';
 import {
@@ -10,19 +11,25 @@ import {
   formatDateTime,
   formatSize,
   isInProgress,
+  statusLabels,
 } from '../lib/format';
 import { StatusChip } from './status-chip';
 
 const POLL_MS = 4000;
 
 export function FilesTable() {
+  // ?status=needs_review (from the dashboard) filters the list; unknown values are ignored
+  const parsedStatus = fileStatusSchema.safeParse(
+    useSearchParams().get('status'),
+  );
+  const status = parsedStatus.success ? parsedStatus.data : undefined;
   const [files, setFiles] = useState<BusinessFile[] | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const page = await listFiles({ limit: 50 });
+      const page = await listFiles({ limit: 50, status });
       setFiles(page.items);
       setNextCursor(page.nextCursor);
       setError(null);
@@ -31,7 +38,7 @@ export function FilesTable() {
         e instanceof Error ? e.message : 'No se pudieron cargar los archivos',
       );
     }
-  }, []);
+  }, [status]);
 
   useEffect(() => {
     void load();
@@ -47,7 +54,7 @@ export function FilesTable() {
 
   const loadMore = async () => {
     if (!nextCursor) return;
-    const page = await listFiles({ limit: 50, cursor: nextCursor });
+    const page = await listFiles({ limit: 50, cursor: nextCursor, status });
     setFiles((prev) => [...(prev ?? []), ...page.items]);
     setNextCursor(page.nextCursor);
   };
@@ -82,10 +89,25 @@ export function FilesTable() {
         </p>
       )}
 
+      {status && (
+        <p className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="rounded-full bg-default px-2.5 py-0.5">
+            Mostrando: {statusLabels[status]}
+          </span>
+          <Link href="/files" className="text-accent hover:underline">
+            Quitar filtro
+          </Link>
+        </p>
+      )}
+
       {files && files.length === 0 && (
         <Card>
           <Card.Content className="flex flex-col items-center gap-3 py-10 text-center">
-            <p className="font-medium">Aún no has subido archivos</p>
+            <p className="font-medium">
+              {status
+                ? 'No hay archivos con este estado'
+                : 'Aún no has subido archivos'}
+            </p>
             <Link href="/upload">
               <Button>Subir archivos</Button>
             </Link>

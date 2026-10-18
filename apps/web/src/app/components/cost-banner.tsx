@@ -4,7 +4,7 @@ import { Card } from '@heroui/react';
 import type { CostSummary } from '@org/shared';
 import { useEffect, useState } from 'react';
 import { getCostSummary } from '../lib/files-api';
-import { formatCost } from '../lib/format';
+import { formatCost, limitReachedMessage } from '../lib/format';
 
 /** Monthly analysis cost, the optional limit and how many files were read without paid AI. */
 export function CostBanner() {
@@ -47,9 +47,7 @@ export function CostBanner() {
             role="alert"
             className="rounded-lg bg-warning/10 px-3 py-2 text-sm text-warning"
           >
-            Se alcanzó el límite mensual. Los archivos nuevos se guardan como
-            «En cola (límite alcanzado)» y se analizan al aumentar el límite o
-            al empezar el mes siguiente.
+            {limitReachedMessage}
           </p>
         )}
       </Card.Content>

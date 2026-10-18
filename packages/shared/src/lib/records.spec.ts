@@ -154,6 +154,19 @@ describe('query schemas', () => {
     ).toBe(false);
   });
 
+  it('productsQuerySchema accepts an optional limit between 1 and 100', () => {
+    const parse = (limit: unknown) =>
+      productsQuerySchema.safeParse({ direction: 'purchase', limit });
+    expect(parse('5').success).toBe(true);
+    expect(parse(100).success).toBe(true);
+    expect(parse(0).success).toBe(false);
+    expect(parse(101).success).toBe(false);
+    expect(parse('abc').success).toBe(false);
+    expect(
+      productsQuerySchema.parse({ direction: 'sale' }).limit,
+    ).toBeUndefined();
+  });
+
   it('productsQuerySchema requires a direction', () => {
     expect(productsQuerySchema.safeParse({}).success).toBe(false);
     expect(productsQuerySchema.safeParse({ direction: 'sale' }).success).toBe(
