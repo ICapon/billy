@@ -1,6 +1,10 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
     "outDir": "./out-tsc/jest",
     "types": ["jest", "node"],
     "forceConsistentCasingInFileNames": true
@@ -10,6 +14,7 @@
     "jest.config.cts",
     "src/**/*.test.ts",
     "src/**/*.spec.ts",
+    "src/**/testing.ts",
     "src/**/*.d.ts"
   ],
   "references": [

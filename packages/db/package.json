@@ -17,7 +17,41 @@
     "name": "db",
     "tags": [
       "scope:db"
-    ]
+    ],
+    "targets": {
+      "migrate": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "node scripts/migrate.cjs",
+          "cwd": "packages/db"
+        },
+        "cache": false
+      },
+      "migrate-revert": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "node scripts/migrate.cjs --revert",
+          "cwd": "packages/db"
+        },
+        "cache": false
+      },
+      "migration-create": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "node scripts/create-migration.cjs {args.name}",
+          "cwd": "packages/db"
+        },
+        "cache": false
+      }
+    }
   },
-  "dependencies": {}
+  "dependencies": {
+    "@org/shared": "workspace:^",
+    "pg": "^8.23.1",
+    "reflect-metadata": "^0.2.0",
+    "typeorm": "^1.1.2"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1"
+  }
 }

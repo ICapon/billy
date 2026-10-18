@@ -28,15 +28,15 @@ Nx + pnpm monorepo. Everything above this section is managed by Nx; edit only be
 
 ## Layout
 
-| Path | Stack | Nx tag |
-|---|---|---|
-| `apps/api` | NestJS 11, webpack, global prefix `/api`, port 3000 | `scope:api` |
-| `apps/worker` | NestJS application context (no HTTP), BullMQ consumer planned | `scope:worker` |
-| `apps/web` | Next.js 16 (App Router, `output: standalone`), React 19, HeroUI v3, Tailwind 4 | `scope:web` |
-| `packages/shared` | Types/zod schemas shared by everyone | `scope:shared` |
-| `packages/db` | Postgres (pgvector) access | `scope:db` |
-| `packages/ai` | Anthropic/LLM logic | `scope:ai` |
-| `infra/local` | Docker Compose for local dev | – |
+| Path              | Stack                                                                          | Nx tag         |
+| ----------------- | ------------------------------------------------------------------------------ | -------------- |
+| `apps/api`        | NestJS 11, webpack, global prefix `/api`, port 3000                            | `scope:api`    |
+| `apps/worker`     | NestJS application context (no HTTP), BullMQ consumer planned                  | `scope:worker` |
+| `apps/web`        | Next.js 16 (App Router, `output: standalone`), React 19, HeroUI v3, Tailwind 4 | `scope:web`    |
+| `packages/shared` | Types/zod schemas shared by everyone                                           | `scope:shared` |
+| `packages/db`     | Postgres (pgvector) access                                                     | `scope:db`     |
+| `packages/ai`     | Anthropic/LLM logic                                                            | `scope:ai`     |
+| `infra/local`     | Docker Compose for local dev                                                   | –              |
 
 Allowed dependencies (enforced by `@nx/enforce-module-boundaries` in `eslint.config.mjs`):
 `api`/`worker` → shared, db, ai · `web` → shared only · `ai`/`db` → shared · `shared` → shared.
@@ -58,7 +58,8 @@ Never import `db` or `ai` from `web`. When adding a tag or rule, update `eslint.
 ## Local stack
 
 `pnpm start` (build images + up + watch) · `pnpm start:detached` · `pnpm stop` · `pnpm reset` (wipes data) ·
-`pnpm logs` · `pnpm infra:up|infra:down` (only Postgres/Redis/S3, apps run with `nx serve`).
+`pnpm logs` · `pnpm infra:up|infra:down` (only Postgres/Redis/S3, apps run with `nx serve`) ·
+`pnpm db:migrate` (TypeORM migrations in `packages/db`) · `pnpm openapi` (regenerate `apps/api/openapi`).
 
 ## Project tooling (`.claude/`)
 

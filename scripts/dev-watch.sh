@@ -9,14 +9,27 @@ cd "$(dirname "$0")/.."
 # Plain output: the Nx TUI would hide the output of the other watchers
 export NX_TUI=false
 
+# Job control: every background job gets its own process group, so cleanup can signal
+# the whole tree (pnpm -> nx -> webpack/next/compose), not just the direct child.
+set -m
+
 pids=()
 cleanup() {
   trap - EXIT INT TERM
-  # Background jobs of a non-interactive shell ignore SIGINT, so send SIGTERM
-  # and also reach their children (webpack, nx daemon clients, compose).
   for pid in "${pids[@]}"; do
-    pkill -TERM -P "$pid" 2>/dev/null || true
-    kill -TERM "$pid" 2>/dev/null || true
+    kill -TERM -- "-$pid" 2>/dev/null || true
+  done
+  # Give the watchers a moment to exit, then force-kill whatever is left.
+  for _ in 1 2 3 4 5; do
+    alive=0
+    for pid in "${pids[@]}"; do
+      kill -0 -- "-$pid" 2>/dev/null && alive=1
+    done
+    [ "$alive" = 0 ] && return
+    sleep 1
+  done
+  for pid in "${pids[@]}"; do
+    kill -KILL -- "-$pid" 2>/dev/null || true
   done
 }
 trap 'cleanup; exit 130' INT TERM

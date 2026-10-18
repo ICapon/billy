@@ -1,0 +1,398 @@
+# Design-time reference. The source of truth is now apps/api/openapi/openapi.{json,yaml},
+# generated from the controllers with `pnpm openapi`.
+openapi: 3.0.3
+info:
+  title: Billy Files & Records API
+  version: 0.1.0
+  description: >
+    REST contract for business file upload, extraction results and queryable records.
+    Served under the global prefix /api. No authentication in v1 (single fixed owner);
+    every resource is implicitly scoped to the configured owner.
+paths:
+  /api/files:
+    post:
+      summary: Upload one or more files (multipart)
+      description: Max MAX_FILE_SIZE_MB per file and MAX_FILES_PER_BATCH files. Valid files are accepted even if others fail. Duplicates are reported per file as outcome=duplicate inside the 207 response.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                files:
+                  type: array
+                  items: { type: string, format: binary }
+                onDuplicate:
+                  type: string
+                  enum: [skip, keep]
+                  default: skip
+      responses:
+        '207':
+          description: Per-file outcomes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items: { $ref: '#/components/schemas/UploadResult' }
+    get:
+      summary: List files
+      parameters:
+        - {
+            name: status,
+            in: query,
+            schema: { $ref: '#/components/schemas/FileStatus' },
+          }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: cursor, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: Page of files
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/BusinessFile' }
+                  nextCursor: { type: string, nullable: true }
+  /api/files/{id}:
+    parameters:
+      - {
+          name: id,
+          in: path,
+          required: true,
+          schema: { type: string, format: uuid },
+        }
+    get:
+      summary: File detail with extraction runs and records
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BusinessFileDetail' }
+        '404': { description: Not found }
+    delete:
+      summary: Permanently delete file, content and derived records
+      responses:
+        '204': { description: Deleted }
+        '404': { description: Not found }
+  /api/files/{id}/download:
+    parameters:
+      - {
+          name: id,
+          in: path,
+          required: true,
+          schema: { type: string, format: uuid },
+        }
+    get:
+      summary: Stream the original file
+      responses:
+        '200': { description: File bytes }
+  /api/files/{id}/retry:
+    parameters:
+      - {
+          name: id,
+          in: path,
+          required: true,
+          schema: { type: string, format: uuid },
+        }
+    post:
+      summary: Re-enqueue a failed or needs-review file for processing
+      responses:
+        '202': { description: Accepted }
+        '409': { description: File not in a retryable state }
+  /api/records:
+    get:
+      summary: List transactions
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - {
+            name: kind,
+            in: query,
+            schema: { type: string, enum: [expense, income] },
+          }
+        - { name: category, in: query, schema: { type: string } }
+        - { name: fileId, in: query, schema: { type: string, format: uuid } }
+        - {
+            name: product,
+            in: query,
+            description: Case-insensitive match on line item product name,
+            schema: { type: string },
+          }
+        - { name: cursor, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: Page of transactions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Transaction' }
+                  nextCursor: { type: string, nullable: true }
+  /api/records/{id}:
+    parameters:
+      - {
+          name: id,
+          in: path,
+          required: true,
+          schema: { type: string, format: uuid },
+        }
+    patch:
+      summary: Correct a record; marks it confirmed
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TransactionUpdate' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Transaction' }
+    delete:
+      summary: Delete a record
+      responses:
+        '204': { description: Deleted }
+  /api/records/{id}/confirm:
+    parameters:
+      - {
+          name: id,
+          in: path,
+          required: true,
+          schema: { type: string, format: uuid },
+        }
+    post:
+      summary: Confirm a record as-is
+      responses:
+        '200': { description: Confirmed }
+  /api/records/totals:
+    get:
+      summary: Totals grouped by week or month
+      description: Excludes records from files in needs_review and merged duplicates.
+      parameters:
+        - {
+            name: from,
+            in: query,
+            required: true,
+            schema: { type: string, format: date },
+          }
+        - {
+            name: to,
+            in: query,
+            required: true,
+            schema: { type: string, format: date },
+          }
+        - {
+            name: groupBy,
+            in: query,
+            required: true,
+            schema: { type: string, enum: [week, month] },
+          }
+        - {
+            name: kind,
+            in: query,
+            schema: { type: string, enum: [expense, income] },
+          }
+        - { name: category, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: Totals per bucket
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    bucketStart: { type: string, format: date }
+                    kind: { type: string, enum: [expense, income] }
+                    category: { type: string }
+                    totalMinor: { type: integer }
+                    confirmedMinor: { type: integer }
+                    unconfirmedMinor: { type: integer }
+                    currency: { type: string }
+  /api/records/products:
+    get:
+      summary: Purchased or sold products
+      parameters:
+        - {
+            name: direction,
+            in: query,
+            required: true,
+            schema: { type: string, enum: [purchase, sale] },
+          }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: Aggregated products
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    productName: { type: string }
+                    quantity: { type: number }
+                    totalMinor: { type: integer }
+                    currency: { type: string }
+  /api/duplicates:
+    get:
+      summary: Pending likely-duplicate pairs
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/DuplicateCandidate' }
+  /api/duplicates/{id}/resolve:
+    parameters:
+      - {
+          name: id,
+          in: path,
+          required: true,
+          schema: { type: string, format: uuid },
+        }
+    post:
+      summary: Keep both or merge
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action: { type: string, enum: [keep_both, merge] }
+                keepTransactionId:
+                  {
+                    type: string,
+                    format: uuid,
+                    description: Required for merge,
+                  }
+      responses:
+        '200': { description: Resolved }
+  /api/costs/summary:
+    get:
+      summary: Processing cost for a period and limit status
+      parameters:
+        - {
+            name: month,
+            in: query,
+            schema: { type: string, example: '2026-10' },
+          }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  month: { type: string }
+                  totalMicroUsd: { type: integer }
+                  limitMicroUsd: { type: integer, nullable: true }
+                  limitReached: { type: boolean }
+                  avgPerFileMicroUsd: { type: integer }
+                  byTier:
+                    type: object
+                    description: File counts per reading method
+                    additionalProperties: { type: integer }
+                  byKind:
+                    type: object
+                    additionalProperties: { type: integer }
+components:
+  schemas:
+    FileStatus:
+      type: string
+      enum:
+        [received, queued_limit, processing, completed, needs_review, failed]
+    UploadResult:
+      type: object
+      required: [name, outcome]
+      properties:
+        name: { type: string }
+        outcome: { type: string, enum: [accepted, rejected, duplicate] }
+        reason: { type: string, nullable: true }
+        file: { $ref: '#/components/schemas/BusinessFile' }
+        existingFileId: { type: string, format: uuid, nullable: true }
+    BusinessFile:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        originalName: { type: string }
+        mimeType: { type: string }
+        sizeBytes: { type: integer }
+        status: { $ref: '#/components/schemas/FileStatus' }
+        failureReason: { type: string, nullable: true }
+        readingMethod:
+          { type: string, enum: [digital, ocr, vision], nullable: true }
+        totalCostMicroUsd: { type: integer }
+        uploadedAt: { type: string, format: date-time }
+    BusinessFileDetail:
+      allOf:
+        - $ref: '#/components/schemas/BusinessFile'
+        - type: object
+          properties:
+            records:
+              type: array
+              items: { $ref: '#/components/schemas/Transaction' }
+    Transaction:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        fileId: { type: string, format: uuid }
+        occurredOn: { type: string, format: date }
+        amountMinor: { type: integer }
+        currency: { type: string }
+        kind: { type: string, enum: [expense, income] }
+        category: { type: string }
+        isStaff: { type: boolean }
+        counterparty: { type: string, nullable: true }
+        confidence: { type: number }
+        confirmed: { type: boolean }
+        lineItems:
+          type: array
+          items: { $ref: '#/components/schemas/LineItem' }
+    LineItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        productName: { type: string }
+        quantity: { type: number }
+        unitPriceMinor: { type: integer, nullable: true }
+        totalMinor: { type: integer }
+        direction: { type: string, enum: [purchase, sale] }
+    TransactionUpdate:
+      type: object
+      properties:
+        occurredOn: { type: string, format: date }
+        amountMinor: { type: integer, minimum: 0 }
+        currency: { type: string }
+        kind: { type: string, enum: [expense, income] }
+        category: { type: string }
+        counterparty: { type: string, nullable: true }
+        lineItems:
+          type: array
+          items: { $ref: '#/components/schemas/LineItem' }
+    DuplicateCandidate:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [pending, kept_both, merged] }
+        a: { $ref: '#/components/schemas/Transaction' }
+        b: { $ref: '#/components/schemas/Transaction' }

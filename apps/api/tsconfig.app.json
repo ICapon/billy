@@ -16,6 +16,7 @@
   },
   "include": ["src/**/*.ts"],
   "exclude": [
+    "src/testing/test-app.ts",
     "out-tsc",
     "dist",
     "jest.config.ts",
@@ -25,5 +26,16 @@
     "eslint.config.js",
     "eslint.config.cjs",
     "eslint.config.mjs"
+  ],
+  "references": [
+    {
+      "path": "../../packages/shared/tsconfig.lib.json"
+    },
+    {
+      "path": "../../packages/db/tsconfig.lib.json"
+    },
+    {
+      "path": "../../packages/ai/tsconfig.lib.json"
+    }
   ]
 }
