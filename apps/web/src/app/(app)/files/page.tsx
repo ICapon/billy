@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { CostBanner } from '../../components/cost-banner';
 import { DuplicatesPanel } from '../../components/duplicates-panel';
 import { FilesTable } from '../../components/files-table';
@@ -13,7 +14,9 @@ export default function FilesPage() {
       </header>
       <CostBanner />
       <DuplicatesPanel />
-      <FilesTable />
+      <Suspense fallback={null}>
+        <FilesTable />
+      </Suspense>
     </div>
   );
 }

@@ -1,165 +1,306 @@
-// Gráficos SVG ligeros solo para demo (datos ficticios).
+// Lightweight SVG charts for real data. Each chart is an image with an aria-label and a
+// visually hidden table with the same numbers, so it is readable without seeing the graphic.
 
 const W = 600;
 const H = 220;
-const PAD = 24;
+const PAD_X = 48;
+const PAD_TOP = 16;
+const PAD_BOTTOM = 28;
 
-function scale(values: number[]) {
-  const max = Math.max(...values) * 1.1;
-  const x = (i: number) => PAD + (i * (W - PAD * 2)) / (values.length - 1);
-  const y = (v: number) => H - PAD - (v / max) * (H - PAD * 2);
-  return { x, y };
+export interface Series {
+  name: string;
+  color: string;
+  values: number[];
 }
 
-export function LineChart({
-  data,
-  labels,
-}: {
-  data: number[];
-  labels: string[];
-}) {
-  const { x, y } = scale(data);
-  const line = data.map((v, i) => `${i ? 'L' : 'M'}${x(i)},${y(v)}`).join(' ');
-  const area = `${line} L${x(data.length - 1)},${H - PAD} L${x(0)},${H - PAD} Z`;
+type Format = (value: number) => string;
 
+function niceMax(values: number[]): number {
+  const max = Math.max(0, ...values);
+  if (max === 0) return 1;
+  const magnitude = 10 ** Math.floor(Math.log10(max));
+  return Math.ceil(max / magnitude) * magnitude;
+}
+
+/** At most `limit` label indexes, evenly spread, always including the last one. */
+function visibleLabelIndexes(count: number, limit = 6): Set<number> {
+  if (count <= limit)
+    return new Set(Array.from({ length: count }, (_, i) => i));
+  const step = Math.ceil(count / limit);
+  const picked = new Set<number>();
+  for (let i = 0; i < count; i += step) picked.add(i);
+  picked.add(count - 1);
+  return picked;
+}
+
+function DataTable({
+  caption,
+  labels,
+  series,
+  format,
+}: {
+  caption: string;
+  labels: string[];
+  series: Series[];
+  format: Format;
+}) {
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img">
-      <defs>
-        <linearGradient id="area" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.35} />
-          <stop offset="100%" stopColor="var(--accent)" stopOpacity={0} />
-        </linearGradient>
-      </defs>
-      {[0.25, 0.5, 0.75, 1].map((t) => (
-        <line
-          key={t}
-          x1={PAD}
-          x2={W - PAD}
-          y1={PAD + (H - PAD * 2) * t}
-          y2={PAD + (H - PAD * 2) * t}
-          stroke="var(--separator)"
-        />
-      ))}
-      <path d={area} fill="url(#area)" />
-      <path d={line} fill="none" stroke="var(--accent)" strokeWidth={2.5} />
-      {data.map((v, i) => (
-        <circle key={i} cx={x(i)} cy={y(v)} r={3.5} fill="var(--accent)" />
-      ))}
-      {labels.map((l, i) => (
-        <text
-          key={l}
-          x={x(i)}
-          y={H - 4}
-          textAnchor="middle"
-          fontSize={11}
-          fill="var(--muted)"
-        >
-          {l}
-        </text>
-      ))}
-    </svg>
+    <table className="sr-only">
+      <caption>{caption}</caption>
+      <thead>
+        <tr>
+          <th scope="col">Periodo</th>
+          {series.map((s) => (
+            <th key={s.name} scope="col">
+              {s.name}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {labels.map((label, i) => (
+          <tr key={label}>
+            <th scope="row">{label}</th>
+            {series.map((s) => (
+              <td key={s.name}>{format(s.values[i] ?? 0)}</td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
-export function BarChart({
-  data,
-  labels,
-}: {
-  data: number[];
-  labels: string[];
-}) {
-  const max = Math.max(...data) * 1.1;
-  const slot = (W - PAD * 2) / data.length;
-  const bw = slot * 0.55;
-
+function Legend({ series }: { series: Series[] }) {
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img">
-      {data.map((v, i) => {
-        const h = (v / max) * (H - PAD * 2);
-        const bx = PAD + slot * i + (slot - bw) / 2;
+    <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
+      {series.map((s) => (
+        <li key={s.name} className="flex items-center gap-1.5">
+          <span
+            className="size-2.5 rounded-full"
+            style={{ background: s.color }}
+          />
+          {s.name}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function Axes({
+  labels,
+  max,
+  format,
+  xAt,
+}: {
+  labels: string[];
+  max: number;
+  format: Format;
+  xAt: (i: number) => number;
+}) {
+  const visible = visibleLabelIndexes(labels.length);
+  const innerH = H - PAD_TOP - PAD_BOTTOM;
+  return (
+    <>
+      {[0, 0.5, 1].map((t) => {
+        const y = PAD_TOP + innerH * (1 - t);
         return (
-          <g key={labels[i]}>
-            <rect
-              x={bx}
-              y={H - PAD - h}
-              width={bw}
-              height={h}
-              rx={6}
-              fill="var(--accent)"
-              opacity={0.55 + (0.45 * v) / Math.max(...data)}
+          <g key={t}>
+            <line
+              x1={PAD_X}
+              x2={W - 8}
+              y1={y}
+              y2={y}
+              stroke="var(--separator)"
             />
             <text
-              x={bx + bw / 2}
-              y={H - 6}
-              textAnchor="middle"
-              fontSize={11}
+              x={PAD_X - 6}
+              y={y + 4}
+              textAnchor="end"
+              fontSize={10}
               fill="var(--muted)"
             >
-              {labels[i]}
+              {format(max * t)}
             </text>
           </g>
         );
       })}
-    </svg>
+      {labels.map((label, i) =>
+        visible.has(i) ? (
+          <text
+            key={`${label}-${i}`}
+            x={xAt(i)}
+            y={H - 8}
+            textAnchor="middle"
+            fontSize={10}
+            fill="var(--muted)"
+          >
+            {label}
+          </text>
+        ) : null,
+      )}
+    </>
   );
 }
 
-export function DonutChart({
-  data,
+export function SeriesLineChart({
+  labels,
+  series,
+  format = String,
+  ariaLabel,
 }: {
-  data: { label: string; value: number; color: string }[];
+  labels: string[];
+  series: Series[];
+  format?: Format;
+  ariaLabel: string;
 }) {
-  const total = data.reduce((s, d) => s + d.value, 0);
-  const r = 56;
-  const c = 2 * Math.PI * r;
-  let offset = 0;
+  if (labels.length === 0) return null;
+  const max = niceMax(series.flatMap((s) => s.values));
+  const innerW = W - PAD_X - 8;
+  const innerH = H - PAD_TOP - PAD_BOTTOM;
+  const xAt = (i: number) =>
+    labels.length === 1
+      ? PAD_X + innerW / 2
+      : PAD_X + (i * innerW) / (labels.length - 1);
+  const yAt = (v: number) => PAD_TOP + innerH * (1 - v / max);
 
   return (
-    <div className="flex flex-wrap items-center justify-center gap-6">
-      <svg viewBox="0 0 160 160" className="size-40" role="img">
-        <g transform="rotate(-90 80 80)">
-          {data.map((d) => {
-            const len = (d.value / total) * c;
-            const el = (
-              <circle
-                key={d.label}
-                cx={80}
-                cy={80}
-                r={r}
-                fill="none"
-                stroke={d.color}
-                strokeWidth={22}
-                strokeDasharray={`${len} ${c - len}`}
-                strokeDashoffset={-offset}
-              />
-            );
-            offset += len;
-            return el;
-          })}
-        </g>
-        <text
-          x={80}
-          y={86}
-          textAnchor="middle"
-          fontSize={20}
-          fontWeight={600}
-          fill="var(--foreground)"
-        >
-          {total}%
-        </text>
-      </svg>
-      <ul className="flex flex-col gap-2 text-sm">
-        {data.map((d) => (
-          <li key={d.label} className="flex items-center gap-2">
-            <span
-              className="size-3 rounded-full"
-              style={{ background: d.color }}
+    <div className="flex flex-col gap-2">
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        className="w-full"
+        role="img"
+        aria-label={ariaLabel}
+      >
+        <Axes labels={labels} max={max} format={format} xAt={xAt} />
+        {series.map((s) => (
+          <g key={s.name}>
+            <path
+              d={s.values
+                .map((v, i) => `${i ? 'L' : 'M'}${xAt(i)},${yAt(v)}`)
+                .join(' ')}
+              fill="none"
+              stroke={s.color}
+              strokeWidth={2.5}
+              strokeLinejoin="round"
             />
-            <span className="text-muted">{d.label}</span>
-            <span className="font-medium">{d.value}%</span>
-          </li>
+            {s.values.map((v, i) => (
+              <circle
+                key={i}
+                cx={xAt(i)}
+                cy={yAt(v)}
+                r={labels.length > 40 ? 0 : 3}
+                fill={s.color}
+              >
+                <title>{`${labels[i]} · ${s.name}: ${format(v)}`}</title>
+              </circle>
+            ))}
+          </g>
         ))}
-      </ul>
+      </svg>
+      <Legend series={series} />
+      <DataTable
+        caption={ariaLabel}
+        labels={labels}
+        series={series}
+        format={format}
+      />
     </div>
+  );
+}
+
+export function GroupedBarChart({
+  labels,
+  series,
+  format = String,
+  ariaLabel,
+}: {
+  labels: string[];
+  series: Series[];
+  format?: Format;
+  ariaLabel: string;
+}) {
+  if (labels.length === 0) return null;
+  const max = niceMax(series.flatMap((s) => s.values));
+  const innerW = W - PAD_X - 8;
+  const innerH = H - PAD_TOP - PAD_BOTTOM;
+  const slot = innerW / labels.length;
+  const group = slot * 0.7;
+  const bar = group / series.length;
+  const xCenter = (i: number) => PAD_X + slot * i + slot / 2;
+
+  return (
+    <div className="flex flex-col gap-2">
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        className="w-full"
+        role="img"
+        aria-label={ariaLabel}
+      >
+        <Axes labels={labels} max={max} format={format} xAt={xCenter} />
+        {labels.map((label, i) =>
+          series.map((s, j) => {
+            const value = s.values[i] ?? 0;
+            const height = (value / max) * innerH;
+            return (
+              <rect
+                key={`${label}-${s.name}`}
+                x={xCenter(i) - group / 2 + bar * j}
+                y={PAD_TOP + innerH - height}
+                width={Math.max(bar - 2, 1)}
+                height={height}
+                rx={3}
+                fill={s.color}
+              >
+                <title>{`${label} · ${s.name}: ${format(value)}`}</title>
+              </rect>
+            );
+          }),
+        )}
+      </svg>
+      <Legend series={series} />
+      <DataTable
+        caption={ariaLabel}
+        labels={labels}
+        series={series}
+        format={format}
+      />
+    </div>
+  );
+}
+
+export function HorizontalBars({
+  items,
+  format,
+  ariaLabel,
+}: {
+  items: { label: string; value: number; share: number }[];
+  format: Format;
+  ariaLabel: string;
+}) {
+  if (items.length === 0) return null;
+  const max = Math.max(...items.map((i) => i.value), 1);
+  return (
+    <ul className="flex flex-col gap-2" aria-label={ariaLabel}>
+      {items.map((item) => (
+        <li key={item.label} className="flex flex-col gap-1 text-sm">
+          <div className="flex justify-between gap-3">
+            <span className="truncate">{item.label}</span>
+            <span className="shrink-0 text-muted">
+              {format(item.value)} · {Math.round(item.share * 100)} %
+            </span>
+          </div>
+          <div
+            className="h-2 overflow-hidden rounded-full bg-default"
+            aria-hidden
+          >
+            <div
+              className="h-full rounded-full bg-accent"
+              style={{ width: `${(item.value / max) * 100}%` }}
+            />
+          </div>
+        </li>
+      ))}
+    </ul>
   );
 }

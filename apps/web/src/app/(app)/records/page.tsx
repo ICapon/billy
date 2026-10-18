@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { RecordsExplorer } from '../../components/records-explorer';
 
 export default function RecordsPage() {
@@ -9,7 +10,9 @@ export default function RecordsPage() {
           Gastos, ingresos y productos de tus documentos, por semana o por mes.
         </p>
       </header>
-      <RecordsExplorer />
+      <Suspense fallback={null}>
+        <RecordsExplorer />
+      </Suspense>
     </div>
   );
 }

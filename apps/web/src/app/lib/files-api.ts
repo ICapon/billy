@@ -1,4 +1,6 @@
 import {
+  activitySummarySchema,
+  attentionItemsSchema,
   businessFileDetailSchema,
   costSummarySchema,
   duplicateCandidateSchema,
@@ -7,6 +9,8 @@ import {
   totalsRowSchema,
   transactionSchema,
   uploadResponseSchema,
+  type ActivitySummary,
+  type AttentionItems,
   type BusinessFileDetail,
   type CostSummary,
   type DuplicateCandidate,
@@ -209,8 +213,11 @@ export function getProducts(params: {
   direction: 'purchase' | 'sale';
   from: string;
   to: string;
+  limit?: number;
 }): Promise<ProductRow[]> {
-  const query = new URLSearchParams(params);
+  const { limit, ...rest } = params;
+  const query = new URLSearchParams(rest);
+  if (limit) query.set('limit', String(limit));
   return request(`/records/products?${query}`, (data) =>
     productRowSchema.array().parse(data),
   );
@@ -220,5 +227,21 @@ export function getCostSummary(month?: string): Promise<CostSummary> {
   const suffix = month ? `?month=${month}` : '';
   return request(`/costs/summary${suffix}`, (data) =>
     costSummarySchema.parse(data),
+  );
+}
+
+export function getActivity(params: {
+  from: string;
+  to: string;
+}): Promise<ActivitySummary> {
+  const query = new URLSearchParams(params);
+  return request(`/dashboard/activity?${query}`, (data) =>
+    activitySummarySchema.parse(data),
+  );
+}
+
+export function getAttention(): Promise<AttentionItems> {
+  return request('/dashboard/attention', (data) =>
+    attentionItemsSchema.parse(data),
   );
 }
