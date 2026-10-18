@@ -1,4 +1,6 @@
 # App services. Images are built by Nx: `pnpm nx run-many -t docker:build`.
+# `pnpm start` also runs `docker compose watch`: host rebuilds (see scripts/dev-watch.sh)
+# are synced into the running containers via `develop.watch`.
 # Always combined with compose.infra.yml (see the `compose:local` script).
 x-app-env: &app-env
   NODE_ENV: production
@@ -21,6 +23,9 @@ x-infra-ready: &infra-ready
 services:
   api:
     image: apps-api
+    # `build` is only here so `docker compose watch` accepts the service; images are built by Nx (docker:build)
+    build:
+      context: ../../apps/api
     pull_policy: never
     environment:
       <<: *app-env
@@ -28,15 +33,31 @@ services:
     ports:
       - '${API_PORT:-3000}:3000'
     depends_on: *infra-ready
+    develop:
+      watch:
+        - action: sync+restart
+          path: ../../apps/api/dist/main.js
+          target: /app/main.js
 
   worker:
     image: apps-worker
+    # `build` is only here so `docker compose watch` accepts the service; images are built by Nx (docker:build)
+    build:
+      context: ../../apps/worker
     pull_policy: never
     environment: *app-env
     depends_on: *infra-ready
+    develop:
+      watch:
+        - action: sync+restart
+          path: ../../apps/worker/dist/main.js
+          target: /app/main.js
 
   web:
     image: apps-web
+    # `build` is only here so `docker compose watch` accepts the service; images are built by Nx (docker:build)
+    build:
+      context: ../../apps/web
     pull_policy: never
     environment:
       API_URL: http://api:3000
@@ -44,3 +65,13 @@ services:
       - '${WEB_PORT:-3001}:3000'
     depends_on:
       - api
+    develop:
+      watch:
+        - action: sync+restart
+          path: ../../apps/web/.next/standalone
+          target: /app
+          ignore:
+            - node_modules/
+        - action: sync
+          path: ../../apps/web/.next/static
+          target: /app/apps/web/.next/static

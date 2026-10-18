@@ -29,7 +29,8 @@ app (and prunes its lockfile) and then the image. Images are tagged `apps-api`,
 
 | Command | What it does |
 |---|---|
-| `pnpm start` | Build all images with Nx, then start infra + services and wait for health |
+| `pnpm start` | Build all images with Nx, start infra + services, then keep watching: code changes are rebuilt on the host and synced into the containers (Docker Compose `develop.watch`). Ctrl+C stops the watchers; containers keep running |
+| `pnpm start:detached` | Same as `start` without the watch |
 | `pnpm stop` | Stop everything (data is kept) |
 | `pnpm reset` | Stop, delete volumes (data), then start fresh |
 | `pnpm logs` | Follow logs of all containers |
