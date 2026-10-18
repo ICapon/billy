@@ -12,7 +12,28 @@
   },
   "sandbox": {
     "network": {
-      "allowedDomains": ["www.google-analytics.com"]
+      "allowedDomains": [
+        "www.google-analytics.com"
+      ]
     }
+  },
+  "permissions": {
+    "allow": [
+      "Bash(pnpm nx *)",
+      "Bash(pnpm env:init)",
+      "Bash(pnpm compose:local ps*)",
+      "Bash(pnpm compose:local config*)",
+      "Bash(pnpm compose:local logs --tail*)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(bash -n *)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Bash(pnpm reset)",
+      "Bash(docker compose * down -v*)",
+      "Bash(docker volume rm*)"
+    ]
   }
 }
