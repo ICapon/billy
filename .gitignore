@@ -48,3 +48,12 @@ Thumbs.db
 .nx/polygraph
 .nx/self-healing
 .nx/migrate-runs
+test-output
+
+# Next.js
+.next
+out
+
+# env
+.env
+.env.local
