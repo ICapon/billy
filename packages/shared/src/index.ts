@@ -5,3 +5,4 @@ export * from './lib/records';
 export * from './lib/costs';
 export * from './lib/jobs';
 export * from './lib/config';
+export * from './lib/dashboard';
