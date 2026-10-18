@@ -2,7 +2,12 @@
   "name": "@org/source",
   "version": "0.0.0",
   "license": "MIT",
-  "scripts": {},
+  "scripts": {
+    "infra:up": "docker compose -f infra/local/docker-compose.yml --env-file .env up -d",
+    "infra:down": "docker compose -f infra/local/docker-compose.yml --env-file .env down",
+    "infra:logs": "docker compose -f infra/local/docker-compose.yml --env-file .env logs -f",
+    "infra:reset": "docker compose -f infra/local/docker-compose.yml --env-file .env down -v"
+  },
   "private": true,
   "devDependencies": {
     "@eslint/js": "^9.8.0",
