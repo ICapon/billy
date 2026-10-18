@@ -5,6 +5,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ConfigModule } from './config/config.module';
 import { CostsModule } from './costs/costs.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 import { DatabaseModule } from './database/database.module';
 import { FilesModule } from './files/files.module';
 import { QueueModule } from './queue/queue.module';
@@ -20,6 +21,7 @@ import { StorageModule } from './storage/storage.module';
     FilesModule,
     RecordsModule,
     CostsModule,
+    DashboardModule,
   ],
   controllers: [AppController],
   providers: [
