@@ -30,7 +30,7 @@ app (and prunes its lockfile) and then the image. Images are tagged `apps-api`,
 | Command                        | What it does                                                                                                                                                                                                                                              |
 | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `pnpm start`                   | Build all images with Nx, start infra + services, apply database migrations, then keep watching: code changes are rebuilt on the host and synced into the containers (Docker Compose `develop.watch`). Ctrl+C stops the watchers; containers keep running |
-| `pnpm watch`                   | Re-attach only the watchers (no image build, no compose up, no migrations) when the stack is already up, e.g. after Ctrl+C |
+| `pnpm watch`                   | Re-attach only the watchers (no image build, no compose up, no migrations) when the stack is already up, e.g. after Ctrl+C                                                                                                                                |
 | `pnpm start:detached`          | Same as `start` without the watch (still applies migrations)                                                                                                                                                                                              |
 | `pnpm stop`                    | Stop everything (data is kept)                                                                                                                                                                                                                            |
 | `pnpm reset`                   | Stop, delete volumes (data), then start fresh                                                                                                                                                                                                             |
@@ -64,6 +64,7 @@ Variables (all in `.env.example`, passed to `api` and `worker` by `compose.servi
 | `OCR_MIN_CONFIDENCE`, `RECORD_MIN_CONFIDENCE`                                     | Thresholds that escalate to a stronger reader / send a file to review                                                                                                                             |
 | `PROCESSING_COST_LIMIT_USD`                                                       | Optional monthly limit; empty = off. Over the limit new files wait as "En cola (límite alcanzado)" and resume when the limit is raised or the month changes                                       |
 | `EMBEDDING_PROVIDER`, `EMBEDDING_MODEL`, `EMBEDDING_DIMENSIONS`, `VOYAGE_API_KEY` | Embeddings for the document search index (pgvector). The column is 1024-dimensional: changing the dimension needs a migration and re-embedding. Without a key files are processed but not indexed |
+| `CHAT_MODEL`, `CHAT_MAX_MESSAGE_CHARS`, `CHAT_RATE_LIMIT_PER_MINUTE`, `CHAT_CONTEXT_MESSAGES`, `CHAT_TURN_TIMEOUT_MS` | Document chat: model, max message length, requests per minute, past messages sent as context and the per-answer timeout. Needs `ANTHROPIC_API_KEY` (and `VOYAGE_API_KEY` for semantic search) |
 
 Things to know when changing the stack:
 
@@ -74,6 +75,10 @@ Things to know when changing the stack:
   image platform (`node:24-alpine`/musl is covered by the prebuilt packages).
 - **Migrations are not automatic in containers**: `pnpm start`/`start:detached` apply them from
   the host after the stack is healthy; run `pnpm db:migrate` yourself in other flows.
+- **Document types**: migration `1761000000000-document-types` adds `extracted_documents`,
+  `payroll_lines`, `transactions.document_id` and the type columns on `business_files`. Files
+  analysed before it show as «Sin clasificar» until re-analysed (per file, or all at once from
+  the Archivos page, which shows the cost estimate first).
 - **Integration tests** (`api`, `worker`, `db`) use the local Postgres/S3 from `pnpm infra:up`
   with a unique owner per suite and clean up after themselves. If the database is not
   reachable they print a `SKIPPED` warning instead of failing.

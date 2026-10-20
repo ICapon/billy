@@ -29,9 +29,51 @@ export interface StructuredResponse {
   model: string;
 }
 
-/** Seam used by the extraction pipeline so tests never call the real API. */
+/** A piece of a conversational turn (used by the chat, which runs a tool-use loop). */
+export type ConverseBlock =
+  | { type: 'text'; text: string }
+  | { type: 'tool_use'; id: string; name: string; input: unknown }
+  | {
+      type: 'tool_result';
+      toolUseId: string;
+      content: string;
+      isError?: boolean;
+    };
+
+export interface ConverseTurn {
+  role: 'user' | 'assistant';
+  content: ConverseBlock[];
+}
+
+export interface ToolDefinition {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+}
+
+export interface ConverseRequest {
+  model: string;
+  system: string;
+  messages: ConverseTurn[];
+  tools: ToolDefinition[];
+  maxTokens?: number;
+  /** Aborts the request (turn timeout). */
+  signal?: AbortSignal;
+}
+
+export interface ConverseResponse {
+  /** Text and tool_use blocks the model produced. */
+  content: ConverseBlock[];
+  stopReason: 'end_turn' | 'tool_use' | 'max_tokens' | 'other';
+  usage: TokenUsage;
+  model: string;
+}
+
+/** Seam used by the extraction pipeline and the chat so tests never call the real API. */
 export interface LlmClient {
   generateStructured(request: StructuredRequest): Promise<StructuredResponse>;
+  /** One model turn with tools; the caller runs the loop. */
+  converse(request: ConverseRequest): Promise<ConverseResponse>;
 }
 
 export class AnthropicLlmClient implements LlmClient {
@@ -44,16 +86,46 @@ export class AnthropicLlmClient implements LlmClient {
     this.client = new Anthropic({ apiKey });
   }
 
+  /**
+   * Newer models reject `thinking: disabled` and want `between_tools` instead
+   * (they don't think up front; their tool-call updates come back as thinking
+   * blocks, which callers ignore). Older ones only know `disabled`, so try the
+   * new form first and fall back when the API rejects it.
+   */
+  private async createWithoutThinking(
+    params: Omit<Anthropic.MessageCreateParamsNonStreaming, 'thinking'>,
+    options?: { signal?: AbortSignal },
+  ): Promise<Anthropic.Message> {
+    const send = (thinking: { type: string }) =>
+      this.client.messages.create(
+        {
+          ...params,
+          thinking,
+        } as Anthropic.MessageCreateParamsNonStreaming,
+        options,
+      );
+    try {
+      return await send({ type: 'disabled' });
+    } catch (error) {
+      if (
+        error instanceof Anthropic.BadRequestError &&
+        error.message.includes('between_tools')
+      ) {
+        return send({ type: 'between_tools' });
+      }
+      throw error;
+    }
+  }
+
   async generateStructured(
     request: StructuredRequest,
   ): Promise<StructuredResponse> {
-    const response = await this.client.messages.create({
+    const response = await this.createWithoutThinking({
       model: request.model,
       // Room for a long transaction list; kept under the SDK's non-streaming limit.
       max_tokens: request.maxTokens ?? 16_000,
       // Extraction is mechanical; thinking tokens were eating the whole budget and
       // truncating the tool call to `{}`.
-      thinking: { type: 'disabled' },
       // Some models reject forced tool_choice ("tool"/"any"), so use "auto"
       // and instruct the model to answer through the tool instead.
       system: `${request.system}\n\nYou must respond by calling the "${request.toolName}" tool exactly once. Do not answer with plain text.`,
@@ -108,6 +180,78 @@ export class AnthropicLlmClient implements LlmClient {
       },
       model: response.model,
     };
+  }
+
+  async converse(request: ConverseRequest): Promise<ConverseResponse> {
+    const response = await this.createWithoutThinking(
+      {
+        model: request.model,
+        max_tokens: request.maxTokens ?? 4_000,
+        system: request.system,
+        tools: request.tools.map((tool) => ({
+          name: tool.name,
+          description: tool.description,
+          input_schema: tool.inputSchema as Anthropic.Tool.InputSchema,
+        })),
+        tool_choice: { type: 'auto' },
+        messages: request.messages.map((turn) => ({
+          role: turn.role,
+          content: turn.content.map(toAnthropicConverseBlock),
+        })),
+      },
+      { signal: request.signal },
+    );
+
+    const content: ConverseBlock[] = [];
+    for (const block of response.content) {
+      if (block.type === 'text') {
+        content.push({ type: 'text', text: block.text });
+      } else if (block.type === 'tool_use') {
+        content.push({
+          type: 'tool_use',
+          id: block.id,
+          name: block.name,
+          input: block.input,
+        });
+      }
+    }
+    return {
+      content,
+      stopReason:
+        response.stop_reason === 'end_turn' ||
+        response.stop_reason === 'tool_use' ||
+        response.stop_reason === 'max_tokens'
+          ? response.stop_reason
+          : 'other',
+      usage: {
+        inputTokens: response.usage.input_tokens,
+        outputTokens: response.usage.output_tokens,
+      },
+      model: response.model,
+    };
+  }
+}
+
+function toAnthropicConverseBlock(
+  block: ConverseBlock,
+): Anthropic.ContentBlockParam {
+  switch (block.type) {
+    case 'text':
+      return { type: 'text', text: block.text };
+    case 'tool_use':
+      return {
+        type: 'tool_use',
+        id: block.id,
+        name: block.name,
+        input: block.input,
+      };
+    case 'tool_result':
+      return {
+        type: 'tool_result',
+        tool_use_id: block.toolUseId,
+        content: block.content,
+        is_error: block.isError ?? false,
+      };
   }
 }
 

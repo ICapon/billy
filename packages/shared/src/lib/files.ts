@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { documentTypeSchema } from './document-types';
 
 export const fileStatuses = [
   'received',
@@ -42,6 +43,10 @@ export const businessFileSchema = z.object({
   readingMethod: readingMethodSchema.nullable(),
   totalCostMicroUsd: z.number().int().nonnegative(),
   duplicateOf: z.uuid().nullable(),
+  /** null = not classified yet (analyzed before document types existed) */
+  documentType: documentTypeSchema.nullable(),
+  documentTypeConfidence: z.number().min(0).max(1).nullable(),
+  documentTypeManual: z.boolean(),
   uploadedAt: z.iso.datetime(),
 });
 export type BusinessFile = z.infer<typeof businessFileSchema>;
@@ -66,6 +71,10 @@ export type UploadResponse = z.infer<typeof uploadResponseSchema>;
 
 export const filesQuerySchema = z.object({
   status: fileStatusSchema.optional(),
+  /** A document type, or `unclassified` for files analyzed before types existed. */
+  documentType: z
+    .union([documentTypeSchema, z.literal('unclassified')])
+    .optional(),
   from: z.iso.date().optional(),
   to: z.iso.date().optional(),
   cursor: z.string().optional(),
@@ -78,3 +87,29 @@ export const filesPageSchema = z.object({
   nextCursor: z.string().nullable(),
 });
 export type FilesPage = z.infer<typeof filesPageSchema>;
+
+export const setFileTypeSchema = z.object({ documentType: documentTypeSchema });
+export type SetFileType = z.infer<typeof setFileTypeSchema>;
+
+export const reanalyzeScopes = ['unclassified'] as const;
+export const reanalyzeScopeSchema = z.object({
+  scope: z.enum(reanalyzeScopes),
+});
+export type ReanalyzeScope = z.infer<typeof reanalyzeScopeSchema>;
+
+export const reanalyzeEstimateSchema = z.object({
+  files: z.number().int().nonnegative(),
+  estimatedMicroUsd: z.number().int().nonnegative(),
+  limitMicroUsd: z.number().int().nonnegative().nullable(),
+  /** Budget left this month; null when no monthly limit is configured. */
+  remainingMicroUsd: z.number().int().nonnegative().nullable(),
+});
+export type ReanalyzeEstimate = z.infer<typeof reanalyzeEstimateSchema>;
+
+export const reanalyzeResultSchema = z.object({
+  queued: z.number().int().nonnegative(),
+});
+export type ReanalyzeResult = z.infer<typeof reanalyzeResultSchema>;
+
+/** Used to estimate a re-analysis when there is no cost history yet (about a small text call). */
+export const DEFAULT_REANALYSIS_COST_MICRO_USD = 12_000;

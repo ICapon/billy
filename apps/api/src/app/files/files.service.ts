@@ -10,10 +10,13 @@ import {
 import type { Upload } from '@aws-sdk/lib-storage';
 import type { BusinessFileRow } from '@org/db';
 import {
+  DEFAULT_REANALYSIS_COST_MICRO_USD,
   duplicateModeSchema,
+  type DocumentType,
   type DuplicateMode,
   type FilesPage,
   type FilesQuery,
+  type ReanalyzeEstimate,
   type UploadResult,
 } from '@org/shared';
 import busboy from 'busboy';
@@ -293,6 +296,73 @@ export class FilesService {
       failureReason: null,
     });
     await this.queue.enqueueExtraction(id);
+  }
+
+  /**
+   * The owner corrects the document type: the file is read again as that type. Automatic runs
+   * never change a type the owner chose.
+   */
+  async setType(id: string, documentType: DocumentType): Promise<void> {
+    const row = await this.get(id);
+    if (row.status === 'processing') {
+      throw new ConflictException('The file is being processed right now');
+    }
+    await this.repos.files.update(id, {
+      documentType,
+      documentTypeConfidence: 1,
+      documentTypeManual: true,
+      status: 'received',
+      failureReason: null,
+    });
+    await this.queue.enqueueExtraction(id);
+  }
+
+  /** Reads a finished file again (for example to get its document type). */
+  async reanalyze(id: string): Promise<void> {
+    const row = await this.get(id);
+    if (!['completed', 'needs_review', 'failed'].includes(row.status)) {
+      throw new ConflictException(
+        `The file is already waiting or being processed (status: ${row.status})`,
+      );
+    }
+    await this.repos.files.update(id, {
+      status: 'received',
+      failureReason: null,
+    });
+    await this.queue.enqueueExtraction(id);
+  }
+
+  /** How many unclassified files a bulk re-analysis would process, and a rough cost. */
+  async reanalyzeEstimate(): Promise<ReanalyzeEstimate> {
+    const [files, spent, filesWithCost] = await Promise.all([
+      this.repos.files.listUnclassified(),
+      this.repos.costs.monthToDate(),
+      this.repos.costs.filesWithCost(),
+    ]);
+    const perFile =
+      filesWithCost > 0
+        ? Math.round(spent / filesWithCost)
+        : DEFAULT_REANALYSIS_COST_MICRO_USD;
+    const limit = this.config.costLimitMicroUsd;
+    return {
+      files: files.length,
+      estimatedMicroUsd: files.length * perFile,
+      limitMicroUsd: limit,
+      remainingMicroUsd: limit === null ? null : Math.max(0, limit - spent),
+    };
+  }
+
+  /** Queues every unclassified finished file; the monthly limit still applies per file. */
+  async reanalyzeUnclassified(): Promise<number> {
+    const files = await this.repos.files.listUnclassified();
+    for (const file of files) {
+      await this.repos.files.update(file.id, {
+        status: 'received',
+        failureReason: null,
+      });
+      await this.queue.enqueueExtraction(file.id);
+    }
+    return files.length;
   }
 
   async delete(id: string): Promise<void> {

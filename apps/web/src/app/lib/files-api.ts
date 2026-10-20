@@ -1,22 +1,40 @@
 import {
   activitySummarySchema,
+  bankStatementsViewSchema,
+  commercialViewSchema,
+  employeeHistorySchema,
+  payrollLineViewSchema,
+  payrollViewSchema,
+  recordsPageSchema,
+  salesViewSchema,
   attentionItemsSchema,
   businessFileDetailSchema,
   costSummarySchema,
   duplicateCandidateSchema,
   filesPageSchema,
+  reanalyzeEstimateSchema,
+  reanalyzeResultSchema,
   productRowSchema,
   totalsRowSchema,
   transactionSchema,
   uploadResponseSchema,
   type ActivitySummary,
   type AttentionItems,
+  type BankStatementsView,
+  type CommercialView,
+  type EmployeeHistory,
+  type PayrollLineView,
+  type PayrollView,
+  type RecordsPage,
+  type SalesView,
   type BusinessFileDetail,
   type CostSummary,
   type DuplicateCandidate,
   type Transaction,
   type TransactionUpdate,
+  type DocumentType,
   type DuplicateMode,
+  type ReanalyzeEstimate,
   type FilesPage,
   type FileStatus,
   type ProductRow,
@@ -67,10 +85,16 @@ async function request<T>(
 }
 
 export function listFiles(
-  params: { status?: FileStatus; cursor?: string; limit?: number } = {},
+  params: {
+    status?: FileStatus;
+    documentType?: DocumentType | 'unclassified';
+    cursor?: string;
+    limit?: number;
+  } = {},
 ): Promise<FilesPage> {
   const query = new URLSearchParams();
   if (params.status) query.set('status', params.status);
+  if (params.documentType) query.set('documentType', params.documentType);
   if (params.cursor) query.set('cursor', params.cursor);
   if (params.limit) query.set('limit', String(params.limit));
   const suffix = query.size ? `?${query}` : '';
@@ -244,4 +268,115 @@ export function getAttention(): Promise<AttentionItems> {
   return request('/dashboard/attention', (data) =>
     attentionItemsSchema.parse(data),
   );
+}
+
+async function post(path: string, init?: RequestInit): Promise<Response> {
+  const response = await fetch(`${BASE}${path}`, init);
+  if (!response.ok) throw await readError(response);
+  return response;
+}
+
+/** The owner corrects the type: the file is read again as that type. */
+export async function updateFileType(
+  id: string,
+  documentType: DocumentType,
+): Promise<void> {
+  await post(`/files/${id}/type`, {
+    method: 'PATCH',
+    headers: json,
+    body: JSON.stringify({ documentType }),
+  });
+}
+
+export async function reanalyzeFile(id: string): Promise<void> {
+  await post(`/files/${id}/reanalyze`, { method: 'POST' });
+}
+
+export function getReanalyzeEstimate(): Promise<ReanalyzeEstimate> {
+  return request('/files/reanalyze/estimate?scope=unclassified', (data) =>
+    reanalyzeEstimateSchema.parse(data),
+  );
+}
+
+/** Returns how many files were queued. */
+export async function reanalyzeAll(): Promise<number> {
+  const response = await post('/files/reanalyze', {
+    method: 'POST',
+    headers: json,
+    body: JSON.stringify({ scope: 'unclassified' }),
+  });
+  return reanalyzeResultSchema.parse(await response.json()).queued;
+}
+
+export function getBankStatements(params: {
+  from: string;
+  to: string;
+}): Promise<BankStatementsView[]> {
+  const query = new URLSearchParams(params);
+  return request(`/documents/bank-statements?${query}`, (data) =>
+    bankStatementsViewSchema.array().parse(data),
+  );
+}
+
+export function getPayroll(params: {
+  from: string;
+  to: string;
+}): Promise<PayrollView[]> {
+  const query = new URLSearchParams(params);
+  return request(`/documents/payroll?${query}`, (data) =>
+    payrollViewSchema.array().parse(data),
+  );
+}
+
+export function getPayrollLines(
+  documentId: string,
+): Promise<PayrollLineView[]> {
+  return request(`/documents/payroll/${documentId}`, (data) =>
+    payrollLineViewSchema.array().parse(data),
+  );
+}
+
+export function getEmployeeHistory(
+  employeeKey: string,
+): Promise<EmployeeHistory> {
+  return request(
+    `/documents/payroll/employees/${encodeURIComponent(employeeKey)}`,
+    (data) => employeeHistorySchema.parse(data),
+  );
+}
+
+export function getCommercial(params: {
+  from: string;
+  to: string;
+}): Promise<CommercialView[]> {
+  const query = new URLSearchParams(params);
+  return request(`/documents/commercial?${query}`, (data) =>
+    commercialViewSchema.array().parse(data),
+  );
+}
+
+export function getSales(params: {
+  from: string;
+  to: string;
+}): Promise<SalesView[]> {
+  const query = new URLSearchParams(params);
+  return request(`/documents/sales?${query}`, (data) =>
+    salesViewSchema.array().parse(data),
+  );
+}
+
+/** Records behind a figure: the same filters the API accepts on `/records`. */
+export function getRecords(params: {
+  from?: string;
+  to?: string;
+  kind?: TransactionKind;
+  documentType?: DocumentType;
+  documentId?: string;
+  limit?: number;
+}): Promise<RecordsPage> {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined) query.set(key, String(value));
+  }
+  return request(`/records?${query}`, (data) => recordsPageSchema.parse(data));
 }

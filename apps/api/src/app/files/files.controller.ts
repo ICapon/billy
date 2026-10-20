@@ -1,9 +1,11 @@
 import {
+  Body,
   Controller,
   Delete,
   Get,
   HttpCode,
   Param,
+  Patch,
   Post,
   Query,
   Req,
@@ -18,8 +20,10 @@ import {
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
+import { reanalyzeScopes } from '@org/shared';
 import type { Request, Response } from 'express';
 import { ZodResponse } from 'nestjs-zod';
 import { RepositoriesService } from '../database/repositories.service';
@@ -29,8 +33,13 @@ import {
   FilesPageDto,
   FilesQueryDto,
   IdParamDto,
+  ReanalyzeEstimateDto,
+  ReanalyzeResultDto,
+  ReanalyzeScopeDto,
+  SetFileTypeDto,
   UploadResponseDto,
 } from '../dto';
+import { toFileDocument } from '../documents/documents.mapper';
 import { toTransaction } from '../records/records.mapper';
 import { StorageService } from '../storage/storage.service';
 import { toBusinessFile } from './files.mapper';
@@ -90,14 +99,56 @@ export class FilesController {
     return this.files.list(query);
   }
 
+  // Static routes first, so they are not read as `:id`.
+  @Get('reanalyze/estimate')
+  @ApiOperation({
+    summary: 'Estimate a bulk re-analysis',
+    description:
+      "Number of files without a document type and a rough cost (this month's average per " +
+      'file, or a default), with the limit and the budget left.',
+  })
+  @ApiQuery({ name: 'scope', required: true, enum: reanalyzeScopes })
+  @ZodResponse({ type: ReanalyzeEstimateDto })
+  reanalyzeEstimate(@Query() _query: ReanalyzeScopeDto) {
+    return this.files.reanalyzeEstimate();
+  }
+
+  @Post('reanalyze')
+  @HttpCode(202)
+  @ApiOperation({
+    summary: 'Re-analyze all files of a scope',
+    description:
+      'Files go through the normal queue, so the monthly cost limit applies: files over the ' +
+      'limit wait as "queued_limit".',
+  })
+  @ZodResponse({ status: 202, type: ReanalyzeResultDto })
+  async reanalyzeAll(@Body() _body: ReanalyzeScopeDto) {
+    return { queued: await this.files.reanalyzeUnclassified() };
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'File detail with its extracted records' })
   @ApiNotFoundResponse({ description: 'File not found' })
   @ZodResponse({ type: BusinessFileDetailDto })
   async get(@Param() { id }: IdParamDto) {
     const row = await this.files.get(id);
-    const records = await this.repos.records.listByFile(id);
-    return { ...toBusinessFile(row), records: records.map(toTransaction) };
+    const [records, documents] = await Promise.all([
+      this.repos.records.listByFile(id),
+      this.repos.documents.listByFile(id),
+    ]);
+    const lines = await this.repos.documents.payrollLinesFor(
+      documents.map((d) => d.id),
+    );
+    return {
+      ...toBusinessFile(row),
+      records: records.map(toTransaction),
+      documents: documents.map((document) =>
+        toFileDocument(
+          document,
+          lines.filter((line) => line.documentId === document.id),
+        ),
+      ),
+    };
   }
 
   @Get(':id/download')
@@ -122,6 +173,36 @@ export class FilesController {
       `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(row.originalName)}`,
     );
     stream.pipe(res);
+  }
+
+  @Patch(':id/type')
+  @HttpCode(202)
+  @ApiOperation({
+    summary: 'Correct the document type of a file',
+    description:
+      'Marks the type as chosen by the owner and reads the file again as that type. ' +
+      'Confirmed records are kept.',
+  })
+  @ApiAcceptedResponse({ description: 'The file was queued again' })
+  @ApiNotFoundResponse({ description: 'File not found' })
+  @ApiConflictResponse({ description: 'The file is being processed right now' })
+  async setType(
+    @Param() { id }: IdParamDto,
+    @Body() body: SetFileTypeDto,
+  ): Promise<void> {
+    await this.files.setType(id, body.documentType);
+  }
+
+  @Post(':id/reanalyze')
+  @HttpCode(202)
+  @ApiOperation({ summary: 'Re-analyze one finished file' })
+  @ApiAcceptedResponse({ description: 'The file was queued again' })
+  @ApiNotFoundResponse({ description: 'File not found' })
+  @ApiConflictResponse({
+    description: 'The file is already waiting or being processed',
+  })
+  async reanalyze(@Param() { id }: IdParamDto): Promise<void> {
+    await this.files.reanalyze(id);
   }
 
   @Post(':id/retry')

@@ -1,5 +1,7 @@
 import { calculateCostMicroUsd } from './cost/calculate-cost';
 import type {
+  ConverseRequest,
+  ConverseResponse,
   LlmClient,
   StructuredRequest,
   StructuredResponse,
@@ -38,6 +40,19 @@ export class MeteredLlmClient implements LlmClient {
     await this.hooks.afterCall({
       model: response.model || request.model,
       kind: usesVision ? 'llm_vision' : 'llm_text',
+      inputTokens: response.usage.inputTokens,
+      outputTokens: response.usage.outputTokens,
+      costMicroUsd: calculateCostMicroUsd(request.model, response.usage),
+    });
+    return response;
+  }
+
+  async converse(request: ConverseRequest): Promise<ConverseResponse> {
+    await this.hooks.beforeCall();
+    const response = await this.inner.converse(request);
+    await this.hooks.afterCall({
+      model: response.model || request.model,
+      kind: 'llm_text',
       inputTokens: response.usage.inputTokens,
       outputTokens: response.usage.outputTokens,
       costMicroUsd: calculateCostMicroUsd(request.model, response.usage),

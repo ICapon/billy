@@ -64,4 +64,40 @@ describe('MeteredLlmClient', () => {
     ).rejects.toBeInstanceOf(CostLimitReachedError);
     expect(inner.requests).toHaveLength(0);
   });
+
+  it('meters chat turns as text calls and stops before paying when over budget', async () => {
+    const afterCall = jest.fn();
+    const fake = new FakeLlmClient().enqueueTurn({
+      content: [{ type: 'text', text: 'hi' }],
+      usage: { inputTokens: 10_000, outputTokens: 2_000 },
+    });
+    const client = new MeteredLlmClient(fake, {
+      beforeCall: async () => undefined,
+      afterCall,
+    });
+    const response = await client.converse({
+      model: 'claude-haiku-5-5',
+      system: 's',
+      messages: [],
+      tools: [],
+    });
+    expect(response.stopReason).toBe('end_turn');
+    expect(afterCall).toHaveBeenCalledWith({
+      model: 'claude-haiku-5-5',
+      kind: 'llm_text',
+      inputTokens: 10_000,
+      outputTokens: 2_000,
+      costMicroUsd: 20_000,
+    });
+
+    const blocked = new MeteredLlmClient(new FakeLlmClient(), {
+      beforeCall: async () => {
+        throw new CostLimitReachedError();
+      },
+      afterCall,
+    });
+    await expect(
+      blocked.converse({ model: 'm', system: 's', messages: [], tools: [] }),
+    ).rejects.toBeInstanceOf(CostLimitReachedError);
+  });
 });

@@ -1,5 +1,6 @@
-import { In } from 'typeorm';
+import { In, type QueryDeepPartialEntity } from 'typeorm';
 import type {
+  DocumentType,
   LineDirection,
   ProductRow,
   TotalsRow,
@@ -25,6 +26,8 @@ export interface LineItemData {
 }
 
 export interface TransactionData {
+  /** Logical document the record came from (extracted_documents.id). */
+  documentId?: string | null;
   occurredOn: string;
   amountMinor: number;
   currency: string;
@@ -47,6 +50,8 @@ export interface RecordFilters {
   category?: TransactionCategory;
   product?: string;
   fileId?: string;
+  documentType?: DocumentType;
+  documentId?: string;
 }
 
 export interface RecordsPageParams extends RecordFilters {
@@ -66,7 +71,7 @@ const toLineItem = (
   ownerId: string,
   transactionId: string,
   item: LineItemData,
-): Partial<LineItemEntity> => ({
+): QueryDeepPartialEntity<LineItemEntity> => ({
   ownerId,
   transactionId,
   productName: item.productName.trim(),
@@ -110,6 +115,16 @@ export function recordsRepository(db: Database, ownerId: string) {
       query.andWhere('t.category = :category', { category: filters.category });
     if (filters.fileId)
       query.andWhere('t.file_id = :fileId', { fileId: filters.fileId });
+    if (filters.documentId)
+      query.andWhere('t.document_id = :documentId', {
+        documentId: filters.documentId,
+      });
+    if (filters.documentType) {
+      query.andWhere(
+        `COALESCE((SELECT d.type FROM extracted_documents d WHERE d.id = t.document_id), (SELECT f.document_type FROM business_files f WHERE f.id = t.file_id)) = :documentType`,
+        { documentType: filters.documentType },
+      );
+    }
     if (filters.product) {
       query.andWhere(
         `EXISTS (SELECT 1 FROM line_items li WHERE li.transaction_id = t.id AND li.product_key LIKE :product ESCAPE '\\')`,
@@ -164,6 +179,7 @@ export function recordsRepository(db: Database, ownerId: string) {
               counterparty: item.counterparty,
               confidence: item.confidence,
               confirmed: item.confirmed ?? false,
+              documentId: item.documentId ?? null,
               excludedReason: null,
             }),
           );

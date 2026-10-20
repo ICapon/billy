@@ -16,6 +16,9 @@ const validFile = {
   readingMethod: null,
   totalCostMicroUsd: 0,
   duplicateOf: null,
+  documentType: null,
+  documentTypeConfidence: null,
+  documentTypeManual: false,
   uploadedAt: '2026-10-18T10:00:00.000Z',
 };
 
@@ -52,6 +55,26 @@ describe('businessFileSchema', () => {
         ...validFile,
         originalName: 'x'.repeat(256),
       }).success,
+    ).toBe(false);
+  });
+});
+
+describe('document type on files', () => {
+  it('accepts a classified file and rejects unknown types', () => {
+    const classified = {
+      ...validFile,
+      documentType: 'payroll',
+      documentTypeConfidence: 0.93,
+      documentTypeManual: true,
+    };
+    expect(businessFileSchema.safeParse(classified).success).toBe(true);
+    expect(
+      businessFileSchema.safeParse({ ...classified, documentType: 'contract' })
+        .success,
+    ).toBe(false);
+    expect(
+      businessFileSchema.safeParse({ ...classified, documentTypeConfidence: 2 })
+        .success,
     ).toBe(false);
   });
 });

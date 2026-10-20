@@ -1,17 +1,31 @@
 'use client';
 
 import { Button, Card } from '@heroui/react';
-import type { BusinessFileDetail } from '@org/shared';
+import {
+  documentTypes,
+  type BusinessFileDetail,
+  type DocumentType,
+} from '@org/shared';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
-import { downloadUrl, getFile, retryFile } from '../lib/files-api';
+import {
+  downloadUrl,
+  getFile,
+  reanalyzeFile,
+  retryFile,
+  updateFileType,
+} from '../lib/files-api';
+import { DocumentData } from './document-data';
+import { DocumentTypeChip } from './document-type-chip';
 import { RecordEditor } from './record-editor';
 import {
   formatCost,
   formatDateTime,
   formatSize,
   isInProgress,
+  documentTypeLabels,
   readingMethodLabels,
+  UNCLASSIFIED_LABEL,
 } from '../lib/format';
 import { StatusChip } from './status-chip';
 
@@ -21,6 +35,7 @@ export function FileDetail({ id }: { id: string }) {
   const [file, setFile] = useState<BusinessFileDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
+  const [typeBusy, setTypeBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -51,6 +66,35 @@ export function FileDetail({ id }: { id: string }) {
       setError(e instanceof Error ? e.message : 'No se pudo reintentar');
     } finally {
       setRetrying(false);
+    }
+  };
+
+  const changeType = async (type: DocumentType) => {
+    if (!file || type === file.documentType) return;
+    const ok = window.confirm(
+      `Se volverá a leer el archivo como «${documentTypeLabels[type]}». Los registros que ya confirmaste se conservan. ¿Continuar?`,
+    );
+    if (!ok) return;
+    setTypeBusy(true);
+    try {
+      await updateFileType(id, type);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo cambiar el tipo');
+    } finally {
+      setTypeBusy(false);
+    }
+  };
+
+  const reanalyze = async () => {
+    setTypeBusy(true);
+    try {
+      await reanalyzeFile(id);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo re-analizar');
+    } finally {
+      setTypeBusy(false);
     }
   };
 
@@ -108,6 +152,21 @@ export function FileDetail({ id }: { id: string }) {
           <Info label="Estado">
             <StatusChip status={file.status} />
           </Info>
+          <Info label="Tipo de documento">
+            <span className="flex flex-wrap items-center gap-2">
+              <DocumentTypeChip
+                type={file.documentType}
+                manual={file.documentTypeManual}
+              />
+              {file.documentType &&
+                !file.documentTypeManual &&
+                file.documentTypeConfidence !== null && (
+                  <span className="text-xs font-normal text-muted">
+                    {Math.round(file.documentTypeConfidence * 100)} %
+                  </span>
+                )}
+            </span>
+          </Info>
           <Info label="Método de lectura">
             {file.readingMethod ? readingMethodLabels[file.readingMethod] : '—'}
           </Info>
@@ -136,6 +195,57 @@ export function FileDetail({ id }: { id: string }) {
           <p>{file.failureReason}</p>
         </div>
       )}
+
+      <Card>
+        <Card.Header>
+          <Card.Title>Datos del documento</Card.Title>
+        </Card.Header>
+        <Card.Content className="flex flex-col gap-3">
+          {file.documents.length === 0 ? (
+            <div className="flex flex-col items-start gap-2 text-sm text-muted">
+              <p>
+                {file.documentType === null && !isInProgress(file.status)
+                  ? `${UNCLASSIFIED_LABEL}: este archivo se analizó antes de que existieran los tipos de documento.`
+                  : isInProgress(file.status)
+                    ? 'Analizando el archivo…'
+                    : 'No se encontraron documentos en este archivo.'}
+              </p>
+              {file.documentType === null && !isInProgress(file.status) && (
+                <Button
+                  size="sm"
+                  isDisabled={typeBusy}
+                  onPress={() => void reanalyze()}
+                >
+                  Re-analizar
+                </Button>
+              )}
+            </div>
+          ) : (
+            file.documents.map((document) => (
+              <DocumentData key={document.id} document={document} />
+            ))
+          )}
+          <label className="flex flex-wrap items-center gap-2 text-sm text-muted">
+            ¿El tipo no es correcto?
+            <select
+              aria-label="Corregir el tipo de documento"
+              disabled={typeBusy || isInProgress(file.status)}
+              value={file.documentType ?? ''}
+              onChange={(e) => void changeType(e.target.value as DocumentType)}
+              className="rounded-lg border border-separator bg-surface px-2.5 py-1.5 text-sm text-foreground outline-none focus:border-accent"
+            >
+              {file.documentType === null && (
+                <option value="">{UNCLASSIFIED_LABEL}</option>
+              )}
+              {documentTypes.map((type) => (
+                <option key={type} value={type}>
+                  {documentTypeLabels[type]}
+                </option>
+              ))}
+            </select>
+          </label>
+        </Card.Content>
+      </Card>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <Card>

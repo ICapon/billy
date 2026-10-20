@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 import { CostBanner } from '../../components/cost-banner';
 import { DuplicatesPanel } from '../../components/duplicates-panel';
 import { FilesTable } from '../../components/files-table';
+import { ReanalyzeBanner } from '../../components/reanalyze-dialog';
 
 export default function FilesPage() {
   return (
@@ -13,6 +14,7 @@ export default function FilesPage() {
         </p>
       </header>
       <CostBanner />
+      <ReanalyzeBanner />
       <DuplicatesPanel />
       <Suspense fallback={null}>
         <FilesTable />

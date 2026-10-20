@@ -1,4 +1,5 @@
-import type { FileStatus, ReadingMethod } from '@org/shared';
+import { In } from 'typeorm';
+import type { DocumentType, FileStatus, ReadingMethod } from '@org/shared';
 import type { Database } from '../client';
 import {
   BusinessFileEntity,
@@ -9,6 +10,8 @@ import { decodeCursor, encodeCursor } from './cursor';
 
 export interface ListFilesParams {
   status?: FileStatus;
+  /** A document type, or `unclassified` for files without one. */
+  documentType?: DocumentType | 'unclassified';
   /** Inclusive, ISO date (YYYY-MM-DD). */
   from?: string;
   /** Inclusive, ISO date (YYYY-MM-DD). */
@@ -21,6 +24,9 @@ export interface FileUpdate {
   status?: FileStatus;
   failureReason?: string | null;
   readingMethod?: ReadingMethod | null;
+  documentType?: DocumentType | null;
+  documentTypeConfidence?: number | null;
+  documentTypeManual?: boolean;
 }
 
 export function filesRepository(db: Database, ownerId: string) {
@@ -51,6 +57,11 @@ export function filesRepository(db: Database, ownerId: string) {
         .getOne();
     },
 
+    findManyByIds(ids: string[]): Promise<BusinessFileRow[]> {
+      if (ids.length === 0) return Promise.resolve([]);
+      return repo.findBy({ ownerId, id: In(ids) });
+    },
+
     async list(
       params: ListFilesParams,
     ): Promise<{ items: BusinessFileRow[]; nextCursor: string | null }> {
@@ -59,6 +70,13 @@ export function filesRepository(db: Database, ownerId: string) {
         .where('f.owner_id = :ownerId', { ownerId });
       if (params.status)
         query.andWhere('f.status = :status', { status: params.status });
+      if (params.documentType === 'unclassified') {
+        query.andWhere('f.document_type IS NULL');
+      } else if (params.documentType) {
+        query.andWhere('f.document_type = :documentType', {
+          documentType: params.documentType,
+        });
+      }
       if (params.from) {
         query.andWhere('f.uploaded_at >= :from', {
           from: new Date(params.from),
@@ -91,6 +109,16 @@ export function filesRepository(db: Database, ownerId: string) {
             ? encodeCursor(last.uploadedAt.toISOString(), last.id)
             : null,
       };
+    },
+
+    /** Finished files that never got a document type (analyzed before types existed). */
+    listUnclassified(): Promise<BusinessFileRow[]> {
+      return repo
+        .createQueryBuilder('f')
+        .where('f.owner_id = :ownerId AND f.document_type IS NULL', { ownerId })
+        .andWhere("f.status IN ('completed', 'needs_review', 'failed')")
+        .orderBy('f.uploaded_at', 'ASC')
+        .getMany();
     },
 
     listByStatus(status: FileStatus): Promise<BusinessFileRow[]> {

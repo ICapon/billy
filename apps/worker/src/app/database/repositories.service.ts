@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import {
   chunksRepository,
   costsRepository,
+  documentsRepository,
   duplicatesRepository,
   filesRepository,
   recordsRepository,
@@ -17,6 +18,7 @@ export class RepositoriesService {
   readonly files;
   readonly records;
   readonly runs;
+  readonly documents;
   readonly duplicates;
   readonly chunks;
   readonly costs;
@@ -28,6 +30,7 @@ export class RepositoriesService {
     this.files = filesRepository(handle.db, config.ownerId);
     this.records = recordsRepository(handle.db, config.ownerId);
     this.runs = runsRepository(handle.db, config.ownerId);
+    this.documents = documentsRepository(handle.db, config.ownerId);
     this.duplicates = duplicatesRepository(handle.db, config.ownerId);
     this.chunks = chunksRepository(handle.db, config.ownerId);
     this.costs = costsRepository(handle.db, config.ownerId);

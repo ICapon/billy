@@ -1,8 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
+  chatRepository,
   chunksRepository,
   costsRepository,
   dashboardRepository,
+  documentsRepository,
   duplicatesRepository,
   filesRepository,
   recordsRepository,
@@ -22,6 +24,8 @@ export class RepositoriesService {
   readonly chunks;
   readonly costs;
   readonly dashboard;
+  readonly documents;
+  readonly chat;
 
   constructor(
     @Inject(DB) handle: DbHandle,
@@ -34,5 +38,7 @@ export class RepositoriesService {
     this.chunks = chunksRepository(handle.db, config.ownerId);
     this.costs = costsRepository(handle.db, config.ownerId);
     this.dashboard = dashboardRepository(handle.db, config.ownerId);
+    this.documents = documentsRepository(handle.db, config.ownerId);
+    this.chat = chatRepository(handle.db, config.ownerId);
   }
 }

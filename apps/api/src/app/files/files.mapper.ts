@@ -12,6 +12,9 @@ export function toBusinessFile(row: BusinessFileRow): BusinessFile {
     readingMethod: row.readingMethod,
     totalCostMicroUsd: row.totalCostMicroUsd,
     duplicateOf: row.duplicateOf,
+    documentType: row.documentType,
+    documentTypeConfidence: row.documentTypeConfidence,
+    documentTypeManual: row.documentTypeManual,
     uploadedAt: row.uploadedAt.toISOString(),
   };
 }

@@ -83,11 +83,18 @@ export class ExtractionService {
             currency: this.config.currency,
           },
         },
+        // The owner chose the type: read the file as that type, never reclassify it.
+        {
+          forcedType:
+            file.documentTypeManual && file.documentType
+              ? file.documentType
+              : undefined,
+        },
       );
 
       await this.persist(file, result);
       this.logger.log(
-        `file=${file.id} tier=${result.method} status=${result.outcome} records=${result.records.length} ms=${Date.now() - started}`,
+        `file=${file.id} tier=${result.method} type=${result.documentType ?? 'none'} status=${result.outcome} documents=${result.documents.length} records=${result.records.length} ms=${Date.now() - started}`,
       );
     } catch (error) {
       await this.handleFailure(file, error, Date.now() - started);
@@ -153,9 +160,20 @@ export class ExtractionService {
       }
     }
 
+    // Documents first (replacing them unlinks any confirmed record that is kept), then the
+    // records, each pointing at the new document it came from.
+    const documentIds = await this.repos.documents.replaceForFile(
+      file.id,
+      result.documents.map(({ records: _records, ...document }) => document),
+    );
     const created = await this.repos.records.replaceExtracted(
       file.id,
-      result.records,
+      result.documents.flatMap((document, index) =>
+        document.records.map((record) => ({
+          ...record,
+          documentId: documentIds[index],
+        })),
+      ),
     );
     try {
       await this.duplicates.detectFor(created);
@@ -170,6 +188,8 @@ export class ExtractionService {
     await this.repos.files.update(file.id, {
       status: result.outcome,
       readingMethod: result.method,
+      documentType: result.documentType,
+      documentTypeConfidence: result.documentTypeConfidence,
       failureReason:
         result.outcome === 'needs_review' ? result.issues.join('; ') : null,
     });

@@ -1,5 +1,4 @@
 import {
-  extractedDocumentSchema,
   productsQuerySchema,
   recordsQuerySchema,
   resolveDuplicateSchema,
@@ -81,51 +80,6 @@ describe('transactionUpdateSchema', () => {
     expect(
       transactionUpdateSchema.safeParse({ kind: 'transfer' }).success,
     ).toBe(false);
-  });
-});
-
-describe('extractedDocumentSchema', () => {
-  const extracted = {
-    transactions: [
-      {
-        date: '2026-10-12',
-        amount: 42.5,
-        currency: null,
-        kind: 'expense',
-        category: 'supplies',
-        counterparty: 'Mayorista',
-        lineItems: [
-          {
-            productName: 'Harina',
-            quantity: 5,
-            unitPrice: 8.5,
-            total: 42.5,
-            direction: 'purchase',
-          },
-        ],
-        confidence: { date: 0.9, amount: 0.95, kind: 0.99 },
-      },
-    ],
-  };
-
-  it('accepts several transactions per document', () => {
-    expect(extractedDocumentSchema.safeParse(extracted).success).toBe(true);
-    expect(
-      extractedDocumentSchema.safeParse({
-        transactions: [extracted.transactions[0], extracted.transactions[0]],
-      }).success,
-    ).toBe(true);
-  });
-
-  it('rejects confidences outside 0..1 and unknown directions', () => {
-    const bad = structuredClone(extracted);
-    bad.transactions[0].confidence.amount = 1.5;
-    expect(extractedDocumentSchema.safeParse(bad).success).toBe(false);
-    const badDirection = structuredClone(extracted) as {
-      transactions: { lineItems: { direction: string }[] }[];
-    };
-    badDirection.transactions[0].lineItems[0].direction = 'gift';
-    expect(extractedDocumentSchema.safeParse(badDirection).success).toBe(false);
   });
 });
 

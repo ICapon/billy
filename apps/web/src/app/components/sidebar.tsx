@@ -7,8 +7,12 @@ import { ProjectSelector } from './project-selector';
 const icons = {
   dashboard: <path d="M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z" />,
   records: <path d="M4 20V10m6 10V4m6 16v-7m4 7H2" />,
+  results: <path d="M3 17l6-6 4 4 8-8M15 7h6v6" />,
   files: (
     <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+  ),
+  chat: (
+    <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z" />
   ),
   upload: (
     <path d="M12 16V4m0 0L7 9m5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" />
@@ -20,6 +24,8 @@ const items = [
   { href: '/upload', label: 'Subir archivos', icon: icons.upload },
   { href: '/files', label: 'Archivos', icon: icons.files },
   { href: '/records', label: 'Análisis', icon: icons.records },
+  { href: '/results', label: 'Resultados', icon: icons.results },
+  { href: '/chat', label: 'Chat', icon: icons.chat },
 ];
 
 export function Sidebar() {

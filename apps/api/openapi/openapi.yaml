@@ -60,6 +60,22 @@ paths:
               - completed
               - needs_review
               - failed
+        - name: documentType
+          required: false
+          in: query
+          schema:
+            anyOf:
+              - type: string
+                enum:
+                  - bank_statement
+                  - payroll
+                  - invoice
+                  - receipt
+                  - sales_report
+                  - other
+              - type: string
+                enum:
+                  - unclassified
         - name: from
           required: false
           in: query
@@ -95,6 +111,49 @@ paths:
               schema:
                 $ref: "#/components/schemas/FilesPageDto_Output"
       summary: List files, newest first
+      tags:
+        - files
+  /api/files/reanalyze/estimate:
+    get:
+      description: Number of files without a document type and a rough cost (this month's average per file, or a default), with the limit and the budget left.
+      operationId: FilesController_reanalyzeEstimate
+      parameters:
+        - name: scope
+          required: true
+          in: query
+          schema:
+            enum:
+              - unclassified
+            type: string
+      responses:
+        default:
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReanalyzeEstimateDto_Output"
+      summary: Estimate a bulk re-analysis
+      tags:
+        - files
+  /api/files/reanalyze:
+    post:
+      description: 'Files go through the normal queue, so the monthly cost limit applies: files over the limit wait as "queued_limit".'
+      operationId: FilesController_reanalyzeAll
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReanalyzeScopeDto"
+      responses:
+        "202":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReanalyzeResultDto_Output"
+      summary: Re-analyze all files of a scope
       tags:
         - files
   /api/files/{id}:
@@ -164,6 +223,55 @@ paths:
         "404":
           description: File not found
       summary: Stream the original file
+      tags:
+        - files
+  /api/files/{id}/type:
+    patch:
+      description: Marks the type as chosen by the owner and reads the file again as that type. Confirmed records are kept.
+      operationId: FilesController_setType
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetFileTypeDto"
+      responses:
+        "202":
+          description: The file was queued again
+        "404":
+          description: File not found
+        "409":
+          description: The file is being processed right now
+      summary: Correct the document type of a file
+      tags:
+        - files
+  /api/files/{id}/reanalyze:
+    post:
+      operationId: FilesController_reanalyze
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+            type: string
+      responses:
+        "202":
+          description: The file was queued again
+        "404":
+          description: File not found
+        "409":
+          description: The file is already waiting or being processed
+      summary: Re-analyze one finished file
       tags:
         - files
   /api/files/{id}/retry:
@@ -244,6 +352,25 @@ paths:
             maxLength: 200
             type: string
         - name: fileId
+          required: false
+          in: query
+          schema:
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+            type: string
+        - name: documentType
+          required: false
+          in: query
+          schema:
+            enum:
+              - bank_statement
+              - payroll
+              - invoice
+              - receipt
+              - sales_report
+              - other
+            type: string
+        - name: documentId
           required: false
           in: query
           schema:
@@ -577,6 +704,331 @@ paths:
       summary: Items that need the owner's attention
       tags:
         - dashboard
+  /api/documents/bank-statements:
+    get:
+      description: Included when the statement period ends inside the range (inclusive UTC dates). One entry per currency. Gaps flag an opening balance that differs from the previous closing balance of the same account, or days with no statement in between.
+      operationId: DocumentsController_bankStatements
+      parameters:
+        - name: from
+          required: true
+          in: query
+          description: Inclusive start date (YYYY-MM-DD)
+          schema:
+            format: date
+            pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+            type: string
+        - name: to
+          required: true
+          in: query
+          description: Inclusive end date (YYYY-MM-DD)
+          schema:
+            format: date
+            pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+            type: string
+      responses:
+        "400":
+          description: Missing or malformed dates, or from after to
+        default:
+          description: ""
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BankStatementsViewDto_Output"
+      summary: Bank statements with balances, flows and continuity gaps
+      tags:
+        - documents
+  /api/documents/payroll:
+    get:
+      description: Included when the pay period ends inside the range (inclusive UTC dates). One entry per currency. The total cost is the employer cost when the document states it, otherwise the gross total, and it is the same amount recorded as a staff expense.
+      operationId: DocumentsController_payroll
+      parameters:
+        - name: from
+          required: true
+          in: query
+          description: Inclusive start date (YYYY-MM-DD)
+          schema:
+            format: date
+            pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+            type: string
+        - name: to
+          required: true
+          in: query
+          description: Inclusive end date (YYYY-MM-DD)
+          schema:
+            format: date
+            pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+            type: string
+      responses:
+        "400":
+          description: Missing or malformed dates, or from after to
+        default:
+          description: ""
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PayrollViewDto_Output"
+      summary: Payroll totals per pay period
+      tags:
+        - documents
+  /api/documents/payroll/employees/{key}:
+    get:
+      description: The key is the normalized `employeeKey` returned with the payroll lines.
+      operationId: DocumentsController_employeeHistory
+      parameters:
+        - name: key
+          required: true
+          in: path
+          schema:
+            minLength: 1
+            maxLength: 200
+            type: string
+      responses:
+        "404":
+          description: Unknown employee
+        default:
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmployeeHistoryDto_Output"
+      summary: Pay history of one employee
+      tags:
+        - documents
+  /api/documents/payroll/{documentId}:
+    get:
+      operationId: DocumentsController_payrollLines
+      parameters:
+        - name: documentId
+          required: true
+          in: path
+          schema:
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+            type: string
+      responses:
+        "404":
+          description: Document not found or not a payroll
+        default:
+          description: ""
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PayrollLineViewDto_Output"
+      summary: Employee lines of one payroll document
+      tags:
+        - documents
+  /api/documents/commercial:
+    get:
+      description: Included by issue date (inclusive UTC dates). One entry per currency and kind. Taxes count as 0 when a document does not state them; paid and pending only add documents that say so.
+      operationId: DocumentsController_commercial
+      parameters:
+        - name: from
+          required: true
+          in: query
+          description: Inclusive start date (YYYY-MM-DD)
+          schema:
+            format: date
+            pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+            type: string
+        - name: to
+          required: true
+          in: query
+          description: Inclusive end date (YYYY-MM-DD)
+          schema:
+            format: date
+            pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+            type: string
+      responses:
+        "400":
+          description: Missing or malformed dates, or from after to
+        default:
+          description: ""
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CommercialViewDto_Output"
+      summary: "Invoices and receipts: totals, taxes, paid or pending and top counterparties"
+      tags:
+        - documents
+  /api/documents/sales:
+    get:
+      description: Reports whose period ends inside the range. The series is bucketed by day (ranges up to 31 days) or week. One entry per currency.
+      operationId: DocumentsController_sales
+      parameters:
+        - name: from
+          required: true
+          in: query
+          description: Inclusive start date (YYYY-MM-DD)
+          schema:
+            format: date
+            pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+            type: string
+        - name: to
+          required: true
+          in: query
+          description: Inclusive end date (YYYY-MM-DD)
+          schema:
+            format: date
+            pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+            type: string
+      responses:
+        "400":
+          description: Missing or malformed dates, or from after to
+        default:
+          description: ""
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SalesViewDto_Output"
+      summary: "Sales reports: total, units, average ticket, best products and sales over time"
+      tags:
+        - documents
+  /api/chat/status:
+    get:
+      operationId: ChatController_status
+      parameters: []
+      responses:
+        default:
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatStatusDto_Output"
+      summary: Whether the chat is available, has documents, and example questions
+      tags:
+        - chat
+  /api/chat/conversations:
+    get:
+      description: Conversations without messages are not listed.
+      operationId: ChatController_list
+      parameters:
+        - name: cursor
+          required: false
+          in: query
+          schema:
+            type: string
+        - name: limit
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            maximum: 50
+            default: 20
+            type: integer
+      responses:
+        "400":
+          description: Invalid query
+        default:
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationsPageDto_Output"
+      summary: List conversations, most recent activity first
+      tags:
+        - chat
+    post:
+      operationId: ChatController_create
+      parameters: []
+      responses:
+        "201":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationDto_Output"
+      summary: Start a new, empty conversation
+      tags:
+        - chat
+  /api/chat/conversations/{id}:
+    get:
+      operationId: ChatController_get
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+            type: string
+      responses:
+        "404":
+          description: Conversation not found
+        default:
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationDetailDto_Output"
+      summary: A conversation with its messages, oldest first
+      tags:
+        - chat
+    delete:
+      operationId: ChatController_remove
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Conversation not found
+      summary: Delete a conversation and its messages
+      tags:
+        - chat
+  /api/chat/conversations/{id}/messages:
+    post:
+      description: Stores the question, answers from the analyzed documents and lists the documents used. If the answer fails the question is kept; sending the same text again reuses it.
+      operationId: ChatController_send
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendMessageDto"
+      responses:
+        "201":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SendMessageResultDto_Output"
+        "400":
+          description: Empty or too long message
+        "404":
+          description: Conversation not found
+        "429":
+          description: Rate limited; see the Retry-After header
+        "502":
+          description: The model failed or timed out
+        "503":
+          description: Chat is not configured
+      summary: Ask a question and get the answer
+      tags:
+        - chat
 info:
   title: Billy API
   description: "Business file upload, extraction results and queryable records. No authentication in v1: every resource belongs to the single configured business owner."
@@ -593,6 +1045,10 @@ tags:
     description: Processing cost summary and limit status
   - name: dashboard
     description: File activity and pending items for the dashboard
+  - name: documents
+    description: "Metrics per document type: bank statements, payroll, invoices, sales"
+  - name: chat
+    description: Questions about the analyzed documents, as conversations
 servers: []
 components:
   schemas:
@@ -664,6 +1120,24 @@ components:
                     format: uuid
                     pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
                     nullable: true
+                  documentType:
+                    type: string
+                    enum:
+                      - bank_statement
+                      - payroll
+                      - invoice
+                      - receipt
+                      - sales_report
+                      - other
+                      - null
+                    nullable: true
+                  documentTypeConfidence:
+                    type: number
+                    minimum: 0
+                    maximum: 1
+                    nullable: true
+                  documentTypeManual:
+                    type: boolean
                   uploadedAt:
                     type: string
                     format: date-time
@@ -678,6 +1152,9 @@ components:
                   - readingMethod
                   - totalCostMicroUsd
                   - duplicateOf
+                  - documentType
+                  - documentTypeConfidence
+                  - documentTypeManual
                   - uploadedAt
                 additionalProperties: false
                 nullable: true
@@ -749,6 +1226,24 @@ components:
                 format: uuid
                 pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
                 nullable: true
+              documentType:
+                type: string
+                enum:
+                  - bank_statement
+                  - payroll
+                  - invoice
+                  - receipt
+                  - sales_report
+                  - other
+                  - null
+                nullable: true
+              documentTypeConfidence:
+                type: number
+                minimum: 0
+                maximum: 1
+                nullable: true
+              documentTypeManual:
+                type: boolean
               uploadedAt:
                 type: string
                 format: date-time
@@ -763,6 +1258,9 @@ components:
               - readingMethod
               - totalCostMicroUsd
               - duplicateOf
+              - documentType
+              - documentTypeConfidence
+              - documentTypeManual
               - uploadedAt
             additionalProperties: false
         nextCursor:
@@ -772,6 +1270,52 @@ components:
       required:
         - items
         - nextCursor
+      additionalProperties: false
+    ReanalyzeEstimateDto_Output:
+      type: object
+      properties:
+        files:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        estimatedMicroUsd:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        limitMicroUsd:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+          nullable: true
+        remainingMicroUsd:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+          nullable: true
+      required:
+        - files
+        - estimatedMicroUsd
+        - limitMicroUsd
+        - remainingMicroUsd
+      additionalProperties: false
+    ReanalyzeScopeDto:
+      type: object
+      properties:
+        scope:
+          type: string
+          enum:
+            - unclassified
+      required:
+        - scope
+    ReanalyzeResultDto_Output:
+      type: object
+      properties:
+        queued:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+      required:
+        - queued
       additionalProperties: false
     BusinessFileDetailDto_Output:
       type: object
@@ -821,6 +1365,24 @@ components:
           format: uuid
           pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
           nullable: true
+        documentType:
+          type: string
+          enum:
+            - bank_statement
+            - payroll
+            - invoice
+            - receipt
+            - sales_report
+            - other
+            - null
+          nullable: true
+        documentTypeConfidence:
+          type: number
+          minimum: 0
+          maximum: 1
+          nullable: true
+        documentTypeManual:
+          type: boolean
         uploadedAt:
           type: string
           format: date-time
@@ -941,6 +1503,98 @@ components:
               - excludedReason
               - lineItems
             additionalProperties: false
+        documents:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+                pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+              type:
+                type: string
+                enum:
+                  - bank_statement
+                  - payroll
+                  - invoice
+                  - receipt
+                  - sales_report
+                  - other
+              typeConfidence:
+                type: number
+                minimum: 0
+                maximum: 1
+              periodStart:
+                type: string
+                format: date
+                pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+                nullable: true
+              periodEnd:
+                type: string
+                format: date
+                pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+                nullable: true
+              issueDate:
+                type: string
+                format: date
+                pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+                nullable: true
+              currency:
+                type: string
+                minLength: 3
+                maxLength: 3
+              consistency:
+                type: string
+                enum:
+                  - ok
+                  - inconsistent
+                  - unchecked
+              consistencyNotes:
+                type:
+                  - string
+                  - "null"
+              details:
+                type: object
+                additionalProperties: {}
+              payrollLines:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    employeeName:
+                      type: string
+                    grossMinor:
+                      type: integer
+                      minimum: 0
+                      maximum: 9007199254740991
+                    deductionsMinor:
+                      type: integer
+                      minimum: 0
+                      maximum: 9007199254740991
+                    netMinor:
+                      type: integer
+                      minimum: 0
+                      maximum: 9007199254740991
+                  required:
+                    - employeeName
+                    - grossMinor
+                    - deductionsMinor
+                    - netMinor
+                  additionalProperties: false
+            required:
+              - id
+              - type
+              - typeConfidence
+              - periodStart
+              - periodEnd
+              - issueDate
+              - currency
+              - consistency
+              - consistencyNotes
+              - details
+              - payrollLines
+            additionalProperties: false
       required:
         - id
         - originalName
@@ -951,9 +1605,27 @@ components:
         - readingMethod
         - totalCostMicroUsd
         - duplicateOf
+        - documentType
+        - documentTypeConfidence
+        - documentTypeManual
         - uploadedAt
         - records
+        - documents
       additionalProperties: false
+    SetFileTypeDto:
+      type: object
+      properties:
+        documentType:
+          type: string
+          enum:
+            - bank_statement
+            - payroll
+            - invoice
+            - receipt
+            - sales_report
+            - other
+      required:
+        - documentType
     RecordsPageDto_Output:
       type: object
       properties:
@@ -1808,4 +2480,790 @@ components:
         - queuedLimit
         - pendingDuplicates
         - unconfirmed
+      additionalProperties: false
+    BankStatementsViewDto_Output:
+      type: object
+      properties:
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+        statements:
+          type: array
+          items:
+            type: object
+            properties:
+              documentId:
+                type: string
+                format: uuid
+                pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+              fileId:
+                type: string
+                format: uuid
+                pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+              accountIdentifier:
+                type:
+                  - string
+                  - "null"
+              periodStart:
+                type: string
+                format: date
+                pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+              periodEnd:
+                type: string
+                format: date
+                pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+              openingBalanceMinor:
+                type: integer
+                minimum: -9007199254740991
+                maximum: 9007199254740991
+              closingBalanceMinor:
+                type: integer
+                minimum: -9007199254740991
+                maximum: 9007199254740991
+              totalDepositsMinor:
+                type: integer
+                minimum: 0
+                maximum: 9007199254740991
+              totalWithdrawalsMinor:
+                type: integer
+                minimum: 0
+                maximum: 9007199254740991
+              totalFeesMinor:
+                type: integer
+                minimum: 0
+                maximum: 9007199254740991
+              netChangeMinor:
+                type: integer
+                minimum: -9007199254740991
+                maximum: 9007199254740991
+              consistency:
+                type: string
+                enum:
+                  - ok
+                  - inconsistent
+                  - unchecked
+              notes:
+                type:
+                  - string
+                  - "null"
+            required:
+              - documentId
+              - fileId
+              - accountIdentifier
+              - periodStart
+              - periodEnd
+              - openingBalanceMinor
+              - closingBalanceMinor
+              - totalDepositsMinor
+              - totalWithdrawalsMinor
+              - totalFeesMinor
+              - netChangeMinor
+              - consistency
+              - notes
+            additionalProperties: false
+        balanceSeries:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+                format: date
+                pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+              balanceMinor:
+                type: integer
+                minimum: -9007199254740991
+                maximum: 9007199254740991
+              accountIdentifier:
+                type:
+                  - string
+                  - "null"
+            required:
+              - date
+              - balanceMinor
+              - accountIdentifier
+            additionalProperties: false
+        flows:
+          type: array
+          items:
+            type: object
+            properties:
+              periodStart:
+                type: string
+                format: date
+                pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+              depositsMinor:
+                type: integer
+                minimum: 0
+                maximum: 9007199254740991
+              withdrawalsMinor:
+                type: integer
+                minimum: 0
+                maximum: 9007199254740991
+            required:
+              - periodStart
+              - depositsMinor
+              - withdrawalsMinor
+            additionalProperties: false
+        gaps:
+          type: array
+          items:
+            type: object
+            properties:
+              kind:
+                type: string
+                enum:
+                  - balance
+                  - missing_period
+              accountIdentifier:
+                type:
+                  - string
+                  - "null"
+              afterDocumentId:
+                type: string
+                format: uuid
+                pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+              beforeDocumentId:
+                type: string
+                format: uuid
+                pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+              closingBalanceMinor:
+                type: integer
+                minimum: -9007199254740991
+                maximum: 9007199254740991
+                nullable: true
+              openingBalanceMinor:
+                type: integer
+                minimum: -9007199254740991
+                maximum: 9007199254740991
+                nullable: true
+              missingFrom:
+                type: string
+                format: date
+                pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+                nullable: true
+              missingTo:
+                type: string
+                format: date
+                pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+                nullable: true
+            required:
+              - kind
+              - accountIdentifier
+              - afterDocumentId
+              - beforeDocumentId
+              - closingBalanceMinor
+              - openingBalanceMinor
+              - missingFrom
+              - missingTo
+            additionalProperties: false
+      required:
+        - currency
+        - statements
+        - balanceSeries
+        - flows
+        - gaps
+      additionalProperties: false
+    PayrollViewDto_Output:
+      type: object
+      properties:
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+        periods:
+          type: array
+          items:
+            type: object
+            properties:
+              documentId:
+                type: string
+                format: uuid
+                pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+              fileId:
+                type: string
+                format: uuid
+                pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+              periodStart:
+                type: string
+                format: date
+                pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+              periodEnd:
+                type: string
+                format: date
+                pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+              employees:
+                type: integer
+                minimum: 0
+                maximum: 9007199254740991
+              grossMinor:
+                type: integer
+                minimum: 0
+                maximum: 9007199254740991
+              netMinor:
+                type: integer
+                minimum: 0
+                maximum: 9007199254740991
+              deductionsMinor:
+                type: integer
+                minimum: 0
+                maximum: 9007199254740991
+              totalCostMinor:
+                type: integer
+                minimum: 0
+                maximum: 9007199254740991
+              consistency:
+                type: string
+                enum:
+                  - ok
+                  - inconsistent
+                  - unchecked
+            required:
+              - documentId
+              - fileId
+              - periodStart
+              - periodEnd
+              - employees
+              - grossMinor
+              - netMinor
+              - deductionsMinor
+              - totalCostMinor
+              - consistency
+            additionalProperties: false
+      required:
+        - currency
+        - periods
+      additionalProperties: false
+    EmployeeHistoryDto_Output:
+      type: object
+      properties:
+        employeeKey:
+          type: string
+        employeeName:
+          type: string
+        history:
+          type: array
+          items:
+            type: object
+            properties:
+              documentId:
+                type: string
+                format: uuid
+                pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+              periodStart:
+                type: string
+                format: date
+                pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+              periodEnd:
+                type: string
+                format: date
+                pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+              currency:
+                type: string
+                minLength: 3
+                maxLength: 3
+              grossMinor:
+                type: integer
+                minimum: 0
+                maximum: 9007199254740991
+              deductionsMinor:
+                type: integer
+                minimum: 0
+                maximum: 9007199254740991
+              netMinor:
+                type: integer
+                minimum: 0
+                maximum: 9007199254740991
+            required:
+              - documentId
+              - periodStart
+              - periodEnd
+              - currency
+              - grossMinor
+              - deductionsMinor
+              - netMinor
+            additionalProperties: false
+      required:
+        - employeeKey
+        - employeeName
+        - history
+      additionalProperties: false
+    PayrollLineViewDto_Output:
+      type: object
+      properties:
+        employeeKey:
+          type: string
+        employeeName:
+          type: string
+        grossMinor:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        deductionsMinor:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        netMinor:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+      required:
+        - employeeKey
+        - employeeName
+        - grossMinor
+        - deductionsMinor
+        - netMinor
+      additionalProperties: false
+    CommercialViewDto_Output:
+      type: object
+      properties:
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+        kind:
+          type: string
+          enum:
+            - invoice
+            - receipt
+        documents:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        totalMinor:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        taxMinor:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        paidMinor:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        pendingMinor:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        topCounterparties:
+          type: array
+          items:
+            type: object
+            properties:
+              counterparty:
+                type: string
+              totalMinor:
+                type: integer
+                minimum: 0
+                maximum: 9007199254740991
+              documents:
+                type: integer
+                exclusiveMinimum: true
+                maximum: 9007199254740991
+                minimum: 0
+            required:
+              - counterparty
+              - totalMinor
+              - documents
+            additionalProperties: false
+      required:
+        - currency
+        - kind
+        - documents
+        - totalMinor
+        - taxMinor
+        - paidMinor
+        - pendingMinor
+        - topCounterparties
+      additionalProperties: false
+    SalesViewDto_Output:
+      type: object
+      properties:
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+        totalSalesMinor:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        unitsSold:
+          type: number
+          minimum: 0
+        averageTicketMinor:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+          nullable: true
+        bestProducts:
+          type: array
+          items:
+            type: object
+            properties:
+              productName:
+                type: string
+              quantity:
+                type: number
+              totalMinor:
+                type: integer
+                minimum: -9007199254740991
+                maximum: 9007199254740991
+            required:
+              - productName
+              - quantity
+              - totalMinor
+            additionalProperties: false
+        series:
+          type: array
+          items:
+            type: object
+            properties:
+              bucketStart:
+                type: string
+                format: date
+                pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+              totalMinor:
+                type: integer
+                minimum: 0
+                maximum: 9007199254740991
+            required:
+              - bucketStart
+              - totalMinor
+            additionalProperties: false
+      required:
+        - currency
+        - totalSalesMinor
+        - unitsSold
+        - averageTicketMinor
+        - bestProducts
+        - series
+      additionalProperties: false
+    ChatStatusDto_Output:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        hasDocuments:
+          type: boolean
+        suggestions:
+          type: array
+          items:
+            type: string
+      required:
+        - enabled
+        - hasDocuments
+        - suggestions
+      additionalProperties: false
+    ConversationsPageDto_Output:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+                pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+              title:
+                type: string
+                maxLength: 120
+              lastMessageAt:
+                type: string
+                format: date-time
+                pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+              createdAt:
+                type: string
+                format: date-time
+                pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+            required:
+              - id
+              - title
+              - lastMessageAt
+              - createdAt
+            additionalProperties: false
+        nextCursor:
+          type: array
+          items:
+            type: string
+      required:
+        - items
+        - nextCursor
+      additionalProperties: false
+    ConversationDto_Output:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        title:
+          type: string
+          maxLength: 120
+        lastMessageAt:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+        createdAt:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+      required:
+        - id
+        - title
+        - lastMessageAt
+        - createdAt
+      additionalProperties: false
+    ConversationDetailDto_Output:
+      type: object
+      properties:
+        conversation:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+              pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+            title:
+              type: string
+              maxLength: 120
+            lastMessageAt:
+              type: string
+              format: date-time
+              pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+            createdAt:
+              type: string
+              format: date-time
+              pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+          required:
+            - id
+            - title
+            - lastMessageAt
+            - createdAt
+          additionalProperties: false
+        messages:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+                pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+              role:
+                type: string
+                enum:
+                  - user
+                  - assistant
+              content:
+                type: string
+              sources:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    fileId:
+                      type: string
+                      format: uuid
+                      pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+                    name:
+                      type: string
+                    documentType:
+                      type: string
+                      enum:
+                        - bank_statement
+                        - payroll
+                        - invoice
+                        - receipt
+                        - sales_report
+                        - other
+                        - null
+                      nullable: true
+                    periodStart:
+                      type: string
+                      format: date
+                      pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+                      nullable: true
+                    periodEnd:
+                      type: string
+                      format: date
+                      pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+                      nullable: true
+                    available:
+                      type: boolean
+                  required:
+                    - fileId
+                    - name
+                    - documentType
+                    - periodStart
+                    - periodEnd
+                    - available
+                  additionalProperties: false
+              createdAt:
+                type: string
+                format: date-time
+                pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+            required:
+              - id
+              - role
+              - content
+              - sources
+              - createdAt
+            additionalProperties: false
+      required:
+        - conversation
+        - messages
+      additionalProperties: false
+    SendMessageDto:
+      type: object
+      properties:
+        content:
+          type: string
+          minLength: 1
+          maxLength: 10000
+      required:
+        - content
+    SendMessageResultDto_Output:
+      type: object
+      properties:
+        userMessage:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+              pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+            role:
+              type: string
+              enum:
+                - user
+                - assistant
+            content:
+              type: string
+            sources:
+              type: array
+              items:
+                type: object
+                properties:
+                  fileId:
+                    type: string
+                    format: uuid
+                    pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+                  name:
+                    type: string
+                  documentType:
+                    type: string
+                    enum:
+                      - bank_statement
+                      - payroll
+                      - invoice
+                      - receipt
+                      - sales_report
+                      - other
+                      - null
+                    nullable: true
+                  periodStart:
+                    type: string
+                    format: date
+                    pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+                    nullable: true
+                  periodEnd:
+                    type: string
+                    format: date
+                    pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+                    nullable: true
+                  available:
+                    type: boolean
+                required:
+                  - fileId
+                  - name
+                  - documentType
+                  - periodStart
+                  - periodEnd
+                  - available
+                additionalProperties: false
+            createdAt:
+              type: string
+              format: date-time
+              pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+          required:
+            - id
+            - role
+            - content
+            - sources
+            - createdAt
+          additionalProperties: false
+        assistantMessage:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+              pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+            role:
+              type: string
+              enum:
+                - user
+                - assistant
+            content:
+              type: string
+            sources:
+              type: array
+              items:
+                type: object
+                properties:
+                  fileId:
+                    type: string
+                    format: uuid
+                    pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+                  name:
+                    type: string
+                  documentType:
+                    type: string
+                    enum:
+                      - bank_statement
+                      - payroll
+                      - invoice
+                      - receipt
+                      - sales_report
+                      - other
+                      - null
+                    nullable: true
+                  periodStart:
+                    type: string
+                    format: date
+                    pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+                    nullable: true
+                  periodEnd:
+                    type: string
+                    format: date
+                    pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+                    nullable: true
+                  available:
+                    type: boolean
+                required:
+                  - fileId
+                  - name
+                  - documentType
+                  - periodStart
+                  - periodEnd
+                  - available
+                additionalProperties: false
+            createdAt:
+              type: string
+              format: date-time
+              pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+          required:
+            - id
+            - role
+            - content
+            - sources
+            - createdAt
+          additionalProperties: false
+      required:
+        - userMessage
+        - assistantMessage
       additionalProperties: false

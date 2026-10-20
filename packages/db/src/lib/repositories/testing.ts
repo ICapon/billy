@@ -1,6 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { createDb, type DbHandle } from '../client';
-import { BusinessFileEntity, CostEntryEntity } from '../entities';
+import {
+  BusinessFileEntity,
+  ChatConversationEntity,
+  CostEntryEntity,
+} from '../entities';
 import { filesRepository } from './files';
 
 const url = process.env['DATABASE_URL'] ?? '';
@@ -75,6 +79,9 @@ export function describeDb(
       const { db } = context.handle;
       await db
         .getRepository(CostEntryEntity)
+        .delete({ ownerId: context.ownerId });
+      await db
+        .getRepository(ChatConversationEntity)
         .delete({ ownerId: context.ownerId });
       await db
         .getRepository(BusinessFileEntity)

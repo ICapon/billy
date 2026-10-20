@@ -17,6 +17,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import {
+  documentTypes,
   groupByValues,
   lineDirections,
   transactionCategories,
@@ -65,6 +66,8 @@ export class RecordsController {
     description: 'Case-insensitive match on line item product name',
   })
   @ApiQuery({ name: 'fileId', required: false })
+  @ApiQuery({ name: 'documentType', required: false, enum: documentTypes })
+  @ApiQuery({ name: 'documentId', required: false })
   @ApiQuery({ name: 'cursor', required: false })
   @ApiQuery({
     name: 'limit',

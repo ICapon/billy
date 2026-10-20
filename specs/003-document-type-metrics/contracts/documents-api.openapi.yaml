@@ -1,0 +1,472 @@
+# Design-time reference. After implementation the source of truth is
+# apps/api/openapi/openapi.{json,yaml}, generated with `pnpm openapi`.
+openapi: 3.0.3
+info:
+  title: Billy Document Views API (additions)
+  version: 0.3.0
+  description: >
+    Read-only views per document type, type correction and re-analysis. All data belongs to the
+    single configured business owner. Periods are inclusive UTC dates. Figures never mix
+    currencies: every response is grouped per currency. Loss analysis reuses /api/records/totals.
+paths:
+  /api/documents/bank-statements:
+    get:
+      tags: [documents]
+      summary: Bank statements with balances, flows and continuity gaps
+      description: Included when the statement period ends inside the range.
+      parameters:
+        - { $ref: '#/components/parameters/from' }
+        - { $ref: '#/components/parameters/to' }
+      responses:
+        '200':
+          description: One entry per currency
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/BankStatementsView' }
+  /api/documents/payroll:
+    get:
+      tags: [documents]
+      summary: Payroll totals per pay period
+      parameters:
+        - { $ref: '#/components/parameters/from' }
+        - { $ref: '#/components/parameters/to' }
+      responses:
+        '200':
+          description: One entry per currency
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/PayrollView' }
+  /api/documents/payroll/{documentId}:
+    get:
+      tags: [documents]
+      summary: Employee lines of one payroll document
+      parameters:
+        - {
+            name: documentId,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          }
+      responses:
+        '200':
+          description: Lines
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/PayrollLine' }
+        '404': { description: Document not found or not a payroll }
+  /api/documents/payroll/employees/{key}:
+    get:
+      tags: [documents]
+      summary: Pay history of one employee
+      description: '`key` is the normalized employee key returned in the lines.'
+      parameters:
+        - { name: key, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: History, oldest first
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmployeeHistory' }
+        '404': { description: Unknown employee }
+  /api/documents/commercial:
+    get:
+      tags: [documents]
+      summary: Invoices and receipts totals, taxes, paid/pending and top counterparties
+      description: Included by issue date.
+      parameters:
+        - { $ref: '#/components/parameters/from' }
+        - { $ref: '#/components/parameters/to' }
+      responses:
+        '200':
+          description: One entry per currency
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/CommercialView' }
+  /api/documents/sales:
+    get:
+      tags: [documents]
+      summary: Sales reports totals, units, average ticket, best products and series
+      parameters:
+        - { $ref: '#/components/parameters/from' }
+        - { $ref: '#/components/parameters/to' }
+      responses:
+        '200':
+          description: One entry per currency
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/SalesView' }
+  /api/files/{id}/type:
+    patch:
+      tags: [files]
+      summary: Correct the document type of a file
+      description: Marks the type as manual and re-reads the file for that type; confirmed records are kept.
+      parameters:
+        - {
+            name: id,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [documentType]
+              properties:
+                documentType: { $ref: '#/components/schemas/DocumentType' }
+      responses:
+        '202': { description: Accepted, the file was queued again }
+        '404': { description: File not found }
+        '409': { description: The file is being processed right now }
+  /api/files/{id}/reanalyze:
+    post:
+      tags: [files]
+      summary: Re-analyze one finished file
+      parameters:
+        - {
+            name: id,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          }
+      responses:
+        '202': { description: Accepted }
+        '404': { description: File not found }
+        '409': { description: The file is already waiting or processing }
+  /api/files/reanalyze/estimate:
+    get:
+      tags: [files]
+      summary: How many files a bulk re-analysis would process and its estimated cost
+      parameters:
+        - {
+            name: scope,
+            in: query,
+            required: true,
+            schema: { type: string, enum: [unclassified] },
+          }
+      responses:
+        '200':
+          description: Estimate
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  [files, estimatedMicroUsd, limitMicroUsd, remainingMicroUsd]
+                properties:
+                  files: { type: integer, minimum: 0 }
+                  estimatedMicroUsd: { type: integer, minimum: 0 }
+                  limitMicroUsd: { type: integer, nullable: true }
+                  remainingMicroUsd:
+                    {
+                      type: integer,
+                      nullable: true,
+                      description: Budget left this month,
+                      null without a limit,
+                    }
+  /api/files/reanalyze:
+    post:
+      tags: [files]
+      summary: Re-analyze all files of a scope
+      description: Files go through the normal queue, so the monthly cost limit applies.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scope]
+              properties:
+                scope: { type: string, enum: [unclassified] }
+      responses:
+        '202':
+          description: Queued
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [queued]
+                properties:
+                  queued: { type: integer, minimum: 0 }
+  /api/records:
+    get:
+      tags: [records]
+      summary: List records (change)
+      description: Adds the `documentType` and `documentId` filters used for drill-down.
+      parameters:
+        - {
+            name: documentType,
+            in: query,
+            schema: { $ref: '#/components/schemas/DocumentType' },
+          }
+        - {
+            name: documentId,
+            in: query,
+            schema: { type: string, format: uuid },
+          }
+      responses:
+        '200': { description: Page of records (unchanged shape) }
+  /api/files:
+    get:
+      tags: [files]
+      summary: List files (change)
+      description: Adds the `documentType` filter; `unclassified` selects files without a type. Each file now includes `documentType`, `documentTypeConfidence` and `documentTypeManual`.
+      parameters:
+        - {
+            name: documentType,
+            in: query,
+            schema:
+              {
+                oneOf:
+                  [
+                    { $ref: '#/components/schemas/DocumentType' },
+                    { type: string, enum: [unclassified] },
+                  ],
+              },
+          }
+      responses:
+        '200': { description: Page of files }
+components:
+  parameters:
+    from:
+      {
+        name: from,
+        in: query,
+        required: true,
+        schema: { type: string, format: date },
+      }
+    to:
+      {
+        name: to,
+        in: query,
+        required: true,
+        schema: { type: string, format: date },
+      }
+  schemas:
+    DocumentType:
+      type: string
+      enum: [bank_statement, payroll, invoice, receipt, sales_report, other]
+    Consistency:
+      type: string
+      enum: [ok, inconsistent, unchecked]
+    BankStatementsView:
+      type: object
+      required: [currency, statements, balanceSeries, flows, gaps]
+      properties:
+        currency: { type: string, minLength: 3, maxLength: 3 }
+        statements:
+          type: array
+          items:
+            type: object
+            required:
+              [
+                documentId,
+                fileId,
+                periodStart,
+                periodEnd,
+                openingBalanceMinor,
+                closingBalanceMinor,
+                totalDepositsMinor,
+                totalWithdrawalsMinor,
+                totalFeesMinor,
+                netChangeMinor,
+                consistency,
+              ]
+            properties:
+              documentId: { type: string, format: uuid }
+              fileId: { type: string, format: uuid }
+              accountIdentifier: { type: string, nullable: true }
+              periodStart: { type: string, format: date }
+              periodEnd: { type: string, format: date }
+              openingBalanceMinor: { type: integer }
+              closingBalanceMinor: { type: integer }
+              totalDepositsMinor: { type: integer, minimum: 0 }
+              totalWithdrawalsMinor: { type: integer, minimum: 0 }
+              totalFeesMinor: { type: integer, minimum: 0 }
+              netChangeMinor: { type: integer }
+              consistency: { $ref: '#/components/schemas/Consistency' }
+              notes: { type: string, nullable: true }
+        balanceSeries:
+          type: array
+          items:
+            type: object
+            required: [date, balanceMinor]
+            properties:
+              date: { type: string, format: date }
+              balanceMinor: { type: integer }
+              accountIdentifier: { type: string, nullable: true }
+        flows:
+          type: array
+          items:
+            type: object
+            required: [periodStart, depositsMinor, withdrawalsMinor]
+            properties:
+              periodStart: { type: string, format: date }
+              depositsMinor: { type: integer, minimum: 0 }
+              withdrawalsMinor: { type: integer, minimum: 0 }
+        gaps:
+          type: array
+          items:
+            type: object
+            required: [kind, afterDocumentId, beforeDocumentId]
+            properties:
+              kind: { type: string, enum: [balance, missing_period] }
+              accountIdentifier: { type: string, nullable: true }
+              afterDocumentId: { type: string, format: uuid }
+              beforeDocumentId: { type: string, format: uuid }
+              closingBalanceMinor: { type: integer, nullable: true }
+              openingBalanceMinor: { type: integer, nullable: true }
+              missingFrom: { type: string, format: date, nullable: true }
+              missingTo: { type: string, format: date, nullable: true }
+    PayrollView:
+      type: object
+      required: [currency, periods]
+      properties:
+        currency: { type: string, minLength: 3, maxLength: 3 }
+        periods:
+          type: array
+          items:
+            type: object
+            required:
+              [
+                documentId,
+                fileId,
+                periodStart,
+                periodEnd,
+                employees,
+                grossMinor,
+                netMinor,
+                deductionsMinor,
+                totalCostMinor,
+                consistency,
+              ]
+            properties:
+              documentId: { type: string, format: uuid }
+              fileId: { type: string, format: uuid }
+              periodStart: { type: string, format: date }
+              periodEnd: { type: string, format: date }
+              employees: { type: integer, minimum: 0 }
+              grossMinor: { type: integer, minimum: 0 }
+              netMinor: { type: integer, minimum: 0 }
+              deductionsMinor: { type: integer, minimum: 0 }
+              totalCostMinor:
+                {
+                  type: integer,
+                  minimum: 0,
+                  description: Employer total cost when stated,
+                  otherwise the gross total,
+                }
+              consistency: { $ref: '#/components/schemas/Consistency' }
+    PayrollLine:
+      type: object
+      required:
+        [employeeKey, employeeName, grossMinor, deductionsMinor, netMinor]
+      properties:
+        employeeKey: { type: string }
+        employeeName: { type: string }
+        grossMinor: { type: integer, minimum: 0 }
+        deductionsMinor: { type: integer, minimum: 0 }
+        netMinor: { type: integer, minimum: 0 }
+    EmployeeHistory:
+      type: object
+      required: [employeeKey, employeeName, history]
+      properties:
+        employeeKey: { type: string }
+        employeeName: { type: string }
+        history:
+          type: array
+          items:
+            type: object
+            required:
+              [
+                documentId,
+                periodStart,
+                periodEnd,
+                currency,
+                grossMinor,
+                deductionsMinor,
+                netMinor,
+              ]
+            properties:
+              documentId: { type: string, format: uuid }
+              periodStart: { type: string, format: date }
+              periodEnd: { type: string, format: date }
+              currency: { type: string, minLength: 3, maxLength: 3 }
+              grossMinor: { type: integer, minimum: 0 }
+              deductionsMinor: { type: integer, minimum: 0 }
+              netMinor: { type: integer, minimum: 0 }
+    CommercialView:
+      type: object
+      required:
+        [
+          currency,
+          kind,
+          documents,
+          totalMinor,
+          taxMinor,
+          paidMinor,
+          pendingMinor,
+          topCounterparties,
+        ]
+      properties:
+        currency: { type: string, minLength: 3, maxLength: 3 }
+        kind: { type: string, enum: [invoice, receipt] }
+        documents: { type: integer, minimum: 0 }
+        totalMinor: { type: integer, minimum: 0 }
+        taxMinor: { type: integer, minimum: 0 }
+        paidMinor: { type: integer, minimum: 0 }
+        pendingMinor: { type: integer, minimum: 0 }
+        topCounterparties:
+          type: array
+          items:
+            type: object
+            required: [counterparty, totalMinor, documents]
+            properties:
+              counterparty: { type: string }
+              totalMinor: { type: integer, minimum: 0 }
+              documents: { type: integer, minimum: 1 }
+    SalesView:
+      type: object
+      required:
+        [
+          currency,
+          totalSalesMinor,
+          unitsSold,
+          averageTicketMinor,
+          bestProducts,
+          series,
+        ]
+      properties:
+        currency: { type: string, minLength: 3, maxLength: 3 }
+        totalSalesMinor: { type: integer, minimum: 0 }
+        unitsSold: { type: number, minimum: 0 }
+        averageTicketMinor: { type: integer, nullable: true }
+        bestProducts:
+          type: array
+          items:
+            type: object
+            required: [productName, quantity, totalMinor]
+            properties:
+              productName: { type: string }
+              quantity: { type: number }
+              totalMinor: { type: integer }
+        series:
+          type: array
+          items:
+            type: object
+            required: [bucketStart, totalMinor]
+            properties:
+              bucketStart: { type: string, format: date }
+              totalMinor: { type: integer, minimum: 0 }

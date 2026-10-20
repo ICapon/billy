@@ -12,3 +12,6 @@ export * from './lib/embeddings/voyage';
 export * from './lib/embeddings/chunk';
 export * from './lib/embeddings/query';
 export * from './lib/testing/fake-llm-client';
+export * from './lib/testing/fixtures';
+export * from './lib/chat/answer-question';
+export * from './lib/chat/system-prompt';

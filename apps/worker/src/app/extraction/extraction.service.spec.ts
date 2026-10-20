@@ -1,7 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import {
+  bankStatementDoc,
   CostLimitReachedError,
+  extraction,
   FakeLlmClient,
+  otherDoc,
+  payrollDoc,
+  receiptDoc,
   UnreadableFileError,
   type EmbeddingProvider,
   type OcrEngine,
@@ -31,9 +36,10 @@ const transaction = (overrides: Record<string, unknown> = {}) => ({
   confidence: { date: 0.95, amount: 0.96, kind: 0.99 },
   ...overrides,
 });
+const usage = { inputTokens: 1000, outputTokens: 200 };
 const ok = (...transactions: unknown[]) => ({
-  output: { transactions },
-  usage: { inputTokens: 1000, outputTokens: 200 },
+  output: extraction(receiptDoc(transactions as never)),
+  usage,
 });
 const weak = ok(
   transaction({ confidence: { date: 0.3, amount: 0.4, kind: 0.9 } }),
@@ -94,6 +100,8 @@ describe('ExtractionService (integration, fake LLM/OCR/storage, real Postgres)',
       ocr?: OcrEngine;
       embeddings?: EmbeddingProvider | null;
       guard?: CostGuardService;
+      documentType?: 'payroll' | 'bank_statement' | 'receipt' | 'other';
+      documentTypeManual?: boolean;
     },
   ) {
     const storage = new MemoryStorage();
@@ -105,6 +113,8 @@ describe('ExtractionService (integration, fake LLM/OCR/storage, real Postgres)',
       sizeBytes: 10,
       sha256: randomUUID().replace(/-/g, '').padEnd(64, '0'),
       storageKey: key,
+      documentType: options.documentType ?? null,
+      documentTypeManual: options.documentTypeManual ?? false,
     });
     const service = new ExtractionService(
       c.config,
@@ -320,4 +330,237 @@ describe('ExtractionService (integration, fake LLM/OCR/storage, real Postgres)',
     );
     await expect(service.process(randomUUID())).resolves.toBeUndefined();
   });
+
+  run(
+    'stores the documents of a payroll with its lines, a staff expense and the file type',
+    async (c) => {
+      const llm = new FakeLlmClient([
+        { output: extraction(payrollDoc()), usage },
+      ]);
+      const { service, file, reload } = await setup(c, {
+        mime: 'text/csv',
+        content: 'nomina',
+        llm,
+        embeddings: null,
+      });
+
+      await service.process(file.id);
+
+      const done = await reload();
+      expect(done.status).toBe('completed');
+      expect(done.documentType).toBe('payroll');
+      expect(done.documentTypeConfidence).toBe(0.95);
+      expect(done.documentTypeManual).toBe(false);
+
+      const [document] = await c.repos.documents.listByFile(file.id);
+      expect(document).toMatchObject({
+        type: 'payroll',
+        periodEnd: '2026-09-30',
+        consistency: 'ok',
+        currency: 'USD',
+      });
+      expect(document.details).toMatchObject({
+        grossTotalMinor: 300000,
+        netTotalMinor: 240000,
+        employeeCount: 2,
+      });
+      const lines = await c.repos.documents.payrollLines(document.id);
+      expect(lines.map((l) => [l.employeeKey, l.netMinor])).toEqual([
+        ['ana lopez', 160000],
+        ['beto ruiz', 80000],
+      ]);
+
+      const records = await c.repos.records.listByFile(file.id);
+      expect(records).toHaveLength(1);
+      expect(records[0]).toMatchObject({
+        category: 'staff',
+        isStaff: true,
+        amountMinor: 300000,
+        documentId: document.id,
+      });
+    },
+  );
+
+  run(
+    'stores a bank statement summary and no transactions, and replaces the documents on a re-run',
+    async (c) => {
+      const llm = new FakeLlmClient([
+        { output: extraction(bankStatementDoc()), usage },
+        {
+          output: extraction(
+            bankStatementDoc({}, { closingBalance: 1500, totalDeposits: 850 }),
+          ),
+          usage,
+        },
+      ]);
+      const { service, file } = await setup(c, {
+        mime: 'text/csv',
+        content: 'estado',
+        llm,
+        embeddings: null,
+      });
+
+      await service.process(file.id);
+      expect(await c.repos.records.listByFile(file.id)).toEqual([]);
+      const [first] = await c.repos.documents.listByFile(file.id);
+      expect(first.details).toMatchObject({ closingBalanceMinor: 145000 });
+
+      await service.process(file.id);
+      const documents = await c.repos.documents.listByFile(file.id);
+      expect(documents).toHaveLength(1);
+      expect(documents[0].id).not.toBe(first.id);
+      expect(documents[0].details).toMatchObject({
+        closingBalanceMinor: 150000,
+      });
+    },
+  );
+
+  run('sends an inconsistent document to review', async (c) => {
+    const llm = new FakeLlmClient([
+      {
+        output: extraction(bankStatementDoc({}, { closingBalance: 9000 })),
+        usage,
+      },
+    ]);
+    const { service, file, reload } = await setup(c, {
+      mime: 'text/csv',
+      content: 'estado',
+      llm,
+      embeddings: null,
+    });
+    await service.process(file.id);
+    const done = await reload();
+    expect(done.status).toBe('needs_review');
+    expect(done.failureReason).toContain('Closing balance');
+    const [document] = await c.repos.documents.listByFile(file.id);
+    expect(document.consistency).toBe('inconsistent');
+    expect(document.consistencyNotes).toContain('Closing balance');
+  });
+
+  run('never reclassifies a file whose type the owner chose', async (c) => {
+    const llm = new FakeLlmClient([
+      { output: extraction(payrollDoc()), usage },
+    ]);
+    const { service, file, reload } = await setup(c, {
+      mime: 'text/csv',
+      content: 'nomina',
+      llm,
+      embeddings: null,
+      documentType: 'payroll',
+      documentTypeManual: true,
+    });
+
+    await service.process(file.id);
+
+    expect(llm.requests[0].system).toContain(
+      'The owner states that this file is a payroll',
+    );
+    const done = await reload();
+    expect(done.documentType).toBe('payroll');
+    expect(done.documentTypeManual).toBe(true);
+    expect(done.documentTypeConfidence).toBe(1);
+
+    // the model disagrees: the type stays, the file waits for review
+    const disagree = new FakeLlmClient([
+      { output: extraction(otherDoc()), usage },
+    ]);
+    const second = await setup(c, {
+      mime: 'text/csv',
+      content: 'x',
+      llm: disagree,
+      embeddings: null,
+      documentType: 'payroll',
+      documentTypeManual: true,
+    });
+    await second.service.process(second.file.id);
+    expect((await second.reload()).documentType).toBe('payroll');
+    expect((await second.reload()).status).toBe('needs_review');
+  });
+
+  run(
+    'keeps confirmed records, unlinked, when a file is re-analyzed with new documents',
+    async (c) => {
+      const llm = new FakeLlmClient([
+        { output: extraction(receiptDoc([transaction() as never])), usage },
+        {
+          output: extraction(
+            receiptDoc([
+              transaction({
+                amount: 77,
+                lineItems: [],
+                counterparty: 'Nuevo',
+              }) as never,
+            ]),
+          ),
+          usage,
+        },
+      ]);
+      const { service, file } = await setup(c, {
+        mime: 'text/csv',
+        content: 'x',
+        llm,
+        embeddings: null,
+      });
+      await service.process(file.id);
+      const [first] = await c.repos.records.listByFile(file.id);
+      await c.repos.records.confirm(first.id);
+      expect(first.documentId).not.toBeNull();
+
+      await service.process(file.id);
+      const records = await c.repos.records.listByFile(file.id);
+      const kept = records.find((r) => r.id === first.id);
+      expect(kept?.documentId).toBeNull();
+      const fresh = records.find((r) => r.amountMinor === 7700);
+      expect(fresh?.documentId).not.toBeNull();
+    },
+  );
+
+  run(
+    'writes no employee name, amount or raw model output to the logs or the failure reason',
+    async (c) => {
+      const { Logger } = await import('@nestjs/common');
+      const lines: string[] = [];
+      const spies = (['log', 'warn', 'error', 'debug', 'verbose'] as const).map(
+        (level) =>
+          jest.spyOn(Logger.prototype, level).mockImplementation(((
+            message: unknown,
+          ) => {
+            lines.push(String(message));
+          }) as never),
+      );
+      try {
+        const ok1 = await setup(c, {
+          mime: 'text/csv',
+          content: 'nomina',
+          llm: new FakeLlmClient([
+            { output: extraction(payrollDoc({}, { netTotal: 100 })), usage },
+          ]),
+          embeddings: null,
+        });
+        await ok1.service.process(ok1.file.id);
+        const bad = await setup(c, {
+          mime: 'text/csv',
+          content: 'nomina',
+          llm: new FakeLlmClient([
+            { output: { documents: 'Ana López cobra 2000' } },
+            { output: { documents: 'Ana López cobra 2000' } },
+          ]),
+          embeddings: null,
+        });
+        await expect(bad.service.process(bad.file.id)).rejects.toThrow();
+
+        const failed = await bad.reload();
+        const review = await ok1.reload();
+        const everything = [
+          ...lines,
+          failed.failureReason ?? '',
+          review.failureReason ?? '',
+        ].join('\n');
+        expect(everything).not.toMatch(/Ana|Beto|López|Ruiz/);
+        expect(everything.length).toBeGreaterThan(0);
+      } finally {
+        spies.forEach((spy) => spy.mockRestore());
+      }
+    },
+  );
 });

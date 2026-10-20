@@ -1,5 +1,6 @@
 import type {
-  ExtractedTransaction,
+  Consistency,
+  DocumentType,
   ReadingMethod,
   TransactionCategory,
   TransactionKind,
@@ -69,11 +70,43 @@ export interface ExtractedRecord {
   }[];
 }
 
+/** One logical document of a file, in the shape that is stored. */
+export interface StoredDocument {
+  type: DocumentType;
+  typeConfidence: number;
+  periodStart: string | null;
+  periodEnd: string;
+  issueDate: string | null;
+  currency: string;
+  consistency: Consistency;
+  consistencyNotes: string | null;
+  /** Type-specific figures in minor units (validated with `parseDetails`). */
+  details: Record<string, unknown>;
+  payrollLines: {
+    employeeName: string;
+    employeeKey: string;
+    grossMinor: number;
+    deductionsMinor: number;
+    netMinor: number;
+  }[];
+  /** Ordinary records of this document (payroll adds its `staff` expense). */
+  records: ExtractedRecord[];
+}
+
+export interface ExtractFileOptions {
+  /** The owner chose the type: the file is read as that type. */
+  forcedType?: DocumentType;
+}
+
 export interface ExtractFileResult {
   outcome: FileOutcome;
   /** Tier whose result is returned. */
   method: ReadingMethod;
-  transactions: ExtractedTransaction[];
+  documents: StoredDocument[];
+  /** Type of the file: the forced one, else the document with the most records. */
+  documentType: DocumentType | null;
+  documentTypeConfidence: number | null;
+  /** Every record of every document, in order. */
   records: ExtractedRecord[];
   /** Text read from the file (digital or OCR); null when only vision was used. */
   rawText: string | null;

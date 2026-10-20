@@ -304,3 +304,128 @@ export function HorizontalBars({
     </ul>
   );
 }
+
+/**
+ * Result per period as bars above (profit) and below (loss) a zero line. Losses use the
+ * danger color; the same numbers are available in a hidden table.
+ */
+export function NetBarChart({
+  labels,
+  values,
+  format = String,
+  ariaLabel,
+  onSelect,
+  selectedIndex,
+}: {
+  labels: string[];
+  values: number[];
+  format?: Format;
+  ariaLabel: string;
+  /** Called with the index of the clicked bar. */
+  onSelect?: (index: number) => void;
+  selectedIndex?: number | null;
+}) {
+  if (labels.length === 0) return null;
+  const top = niceMax([0, ...values.filter((v) => v > 0)]);
+  const bottom = niceMax([0, ...values.filter((v) => v < 0).map((v) => -v)]);
+  const hasLoss = values.some((v) => v < 0);
+  const lowest = hasLoss ? bottom : 0;
+  const innerW = W - PAD_X - 8;
+  const innerH = H - PAD_TOP - PAD_BOTTOM;
+  const span = top + lowest;
+  const yAt = (v: number) => PAD_TOP + innerH * (1 - (v + lowest) / span);
+  const zero = yAt(0);
+  const slot = innerW / labels.length;
+  const bar = Math.max(slot * 0.6, 2);
+  const xCenter = (i: number) => PAD_X + slot * i + slot / 2;
+  const visible = visibleLabelIndexes(labels.length);
+  const series: Series[] = [
+    { name: 'Resultado', color: 'var(--accent)', values },
+  ];
+
+  return (
+    <div className="flex flex-col gap-2">
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        className="w-full"
+        role="img"
+        aria-label={ariaLabel}
+      >
+        {[top, 0, ...(hasLoss ? [-lowest] : [])].map((tick) => (
+          <g key={tick}>
+            <line
+              x1={PAD_X}
+              x2={W - 8}
+              y1={yAt(tick)}
+              y2={yAt(tick)}
+              stroke="var(--separator)"
+            />
+            <text
+              x={PAD_X - 6}
+              y={yAt(tick) + 4}
+              textAnchor="end"
+              fontSize={10}
+              fill="var(--muted)"
+            >
+              {format(tick)}
+            </text>
+          </g>
+        ))}
+        {values.map((value, i) => {
+          const y = yAt(value);
+          const isLoss = value < 0;
+          return (
+            <rect
+              key={labels[i] + i}
+              x={xCenter(i) - bar / 2}
+              y={isLoss ? zero : y}
+              width={bar}
+              height={Math.max(Math.abs(y - zero), value === 0 ? 0 : 1)}
+              rx={3}
+              fill={isLoss ? 'var(--danger)' : 'var(--success)'}
+              opacity={
+                selectedIndex === null ||
+                selectedIndex === undefined ||
+                selectedIndex === i
+                  ? 1
+                  : 0.5
+              }
+              style={onSelect ? { cursor: 'pointer' } : undefined}
+              onClick={onSelect ? () => onSelect(i) : undefined}
+            >
+              <title>{`${labels[i]} · ${isLoss ? 'Pérdida' : 'Ganancia'}: ${format(value)}`}</title>
+            </rect>
+          );
+        })}
+        {labels.map((label, i) =>
+          visible.has(i) ? (
+            <text
+              key={`${label}-${i}`}
+              x={xCenter(i)}
+              y={H - 8}
+              textAnchor="middle"
+              fontSize={10}
+              fill="var(--muted)"
+            >
+              {label}
+            </text>
+          ) : null,
+        )}
+      </svg>
+      <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
+        <li className="flex items-center gap-1.5">
+          <span className="size-2.5 rounded-full bg-success" /> Ganancia
+        </li>
+        <li className="flex items-center gap-1.5">
+          <span className="size-2.5 rounded-full bg-danger" /> Pérdida
+        </li>
+      </ul>
+      <DataTable
+        caption={ariaLabel}
+        labels={labels}
+        series={series}
+        format={format}
+      />
+    </div>
+  );
+}

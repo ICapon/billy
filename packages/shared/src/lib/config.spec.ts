@@ -23,6 +23,25 @@ describe('loadConfig', () => {
     expect(config.embedding.dimensions).toBe(1024);
   });
 
+  it('defaults and overrides the chat settings', () => {
+    expect(loadConfig(credentials).chat).toEqual({
+      model: 'claude-sonnet-5-5',
+      maxMessageChars: 2000,
+      rateLimitPerMinute: 20,
+      contextMessages: 12,
+      turnTimeoutMs: 45_000,
+    });
+    const config = loadConfig({
+      ...credentials,
+      CHAT_MODEL: 'claude-haiku-5-5',
+      CHAT_MAX_MESSAGE_CHARS: '500',
+      CHAT_TURN_TIMEOUT_MS: '',
+    });
+    expect(config.chat.model).toBe('claude-haiku-5-5');
+    expect(config.chat.maxMessageChars).toBe(500);
+    expect(config.chat.turnTimeoutMs).toBe(45_000);
+  });
+
   it('treats empty values as unset (compose passes empty strings)', () => {
     const config = loadConfig({
       ...credentials,

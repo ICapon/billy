@@ -3,6 +3,8 @@ import {
   AnthropicLlmClient,
   createTesseractOcr,
   VoyageEmbeddingProvider,
+  type ConverseRequest,
+  type ConverseResponse,
   type LlmClient,
   type OcrEngine,
   type StructuredRequest,
@@ -23,6 +25,11 @@ class LazyLlmClient implements LlmClient {
   generateStructured(request: StructuredRequest): Promise<StructuredResponse> {
     this.client ??= new AnthropicLlmClient(this.apiKey);
     return this.client.generateStructured(request);
+  }
+
+  converse(request: ConverseRequest): Promise<ConverseResponse> {
+    this.client ??= new AnthropicLlmClient(this.apiKey);
+    return this.client.converse(request);
   }
 }
 

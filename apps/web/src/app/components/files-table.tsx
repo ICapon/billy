@@ -1,7 +1,13 @@
 'use client';
 
 import { Button, Card } from '@heroui/react';
-import { fileStatusSchema, type BusinessFile } from '@org/shared';
+import {
+  documentTypeSchema,
+  documentTypes,
+  fileStatusSchema,
+  type BusinessFile,
+  type DocumentType,
+} from '@org/shared';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
@@ -10,9 +16,13 @@ import {
   formatCost,
   formatDateTime,
   formatSize,
+  documentTypeLabels,
   isInProgress,
   statusLabels,
+  UNCLASSIFIED_LABEL,
 } from '../lib/format';
+import { DocumentTypeChip } from './document-type-chip';
+import { FILES_CHANGED_EVENT } from './reanalyze-dialog';
 import { StatusChip } from './status-chip';
 
 const POLL_MS = 4000;
@@ -23,13 +33,28 @@ export function FilesTable() {
     useSearchParams().get('status'),
   );
   const status = parsedStatus.success ? parsedStatus.data : undefined;
+  // ?documentType=payroll|...|unclassified narrows the list by document type
+  const typeParam = useSearchParams().get('documentType');
+  const initialType: DocumentType | 'unclassified' | '' =
+    typeParam === 'unclassified'
+      ? 'unclassified'
+      : documentTypeSchema.safeParse(typeParam).success
+        ? (typeParam as DocumentType)
+        : '';
+  const [typeFilter, setTypeFilter] = useState<
+    DocumentType | 'unclassified' | ''
+  >(initialType);
   const [files, setFiles] = useState<BusinessFile[] | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const page = await listFiles({ limit: 50, status });
+      const page = await listFiles({
+        limit: 50,
+        status,
+        documentType: typeFilter || undefined,
+      });
       setFiles(page.items);
       setNextCursor(page.nextCursor);
       setError(null);
@@ -38,10 +63,17 @@ export function FilesTable() {
         e instanceof Error ? e.message : 'No se pudieron cargar los archivos',
       );
     }
-  }, [status]);
+  }, [status, typeFilter]);
 
   useEffect(() => {
     void load();
+  }, [load]);
+
+  // Other parts of the page (for example the re-analysis banner) ask for a reload.
+  useEffect(() => {
+    const reload = () => void load();
+    window.addEventListener(FILES_CHANGED_EVENT, reload);
+    return () => window.removeEventListener(FILES_CHANGED_EVENT, reload);
   }, [load]);
 
   // Poll while any file is still being processed.
@@ -54,7 +86,12 @@ export function FilesTable() {
 
   const loadMore = async () => {
     if (!nextCursor) return;
-    const page = await listFiles({ limit: 50, cursor: nextCursor, status });
+    const page = await listFiles({
+      limit: 50,
+      cursor: nextCursor,
+      status,
+      documentType: typeFilter || undefined,
+    });
     setFiles((prev) => [...(prev ?? []), ...page.items]);
     setNextCursor(page.nextCursor);
   };
@@ -100,6 +137,25 @@ export function FilesTable() {
         </p>
       )}
 
+      <label className="flex items-center gap-2 text-sm text-muted">
+        Tipo de documento
+        <select
+          className="rounded-lg border border-separator bg-surface px-2.5 py-1.5 text-sm text-foreground outline-none focus:border-accent"
+          value={typeFilter}
+          onChange={(e) =>
+            setTypeFilter(e.target.value as DocumentType | 'unclassified' | '')
+          }
+        >
+          <option value="">Todos</option>
+          {documentTypes.map((type) => (
+            <option key={type} value={type}>
+              {documentTypeLabels[type]}
+            </option>
+          ))}
+          <option value="unclassified">{UNCLASSIFIED_LABEL}</option>
+        </select>
+      </label>
+
       {files && files.length === 0 && (
         <Card>
           <Card.Content className="flex flex-col items-center gap-3 py-10 text-center">
@@ -122,6 +178,7 @@ export function FilesTable() {
               <thead className="border-b border-separator text-muted">
                 <tr>
                   <th className="px-4 py-3 font-medium">Archivo</th>
+                  <th className="px-4 py-3 font-medium">Tipo</th>
                   <th className="px-4 py-3 font-medium">Subido</th>
                   <th className="px-4 py-3 font-medium">Estado</th>
                   <th className="px-4 py-3 text-right font-medium">Costo</th>
@@ -144,6 +201,12 @@ export function FilesTable() {
                       <span className="text-xs text-muted">
                         {formatSize(file.sizeBytes)}
                       </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <DocumentTypeChip
+                        type={file.documentType}
+                        manual={file.documentTypeManual}
+                      />
                     </td>
                     <td className="px-4 py-3 text-muted">
                       {formatDateTime(file.uploadedAt)}

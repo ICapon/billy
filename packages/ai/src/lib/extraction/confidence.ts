@@ -1,6 +1,11 @@
-import type { ExtractedDocument } from '@org/shared';
+import type { ExtractedTransaction, ExtractionOutput } from '@org/shared';
 import { recordConfidence } from './money';
-import type { FileOutcome } from './types';
+import type { FileOutcome, StoredDocument } from './types';
+
+/** What the transaction-level checks need: only the transactions of a document. */
+export interface TransactionsOnly {
+  transactions: ExtractedTransaction[];
+}
 
 export interface Evaluation {
   outcome: FileOutcome;
@@ -25,7 +30,7 @@ function addYears(date: Date, years: number): string {
  * to the total within 1%, and dates in a plausible range.
  */
 export function evaluateDocument(
-  document: ExtractedDocument,
+  document: TransactionsOnly,
   options: { minRecordConfidence: number; today?: Date },
 ): Evaluation {
   const today = options.today ?? new Date();
@@ -64,6 +69,62 @@ export function evaluateDocument(
           `${label}: line items add up to ${sum.toFixed(2)} but the total is ${transaction.amount.toFixed(2)}`,
         );
       }
+    }
+  });
+
+  return {
+    outcome: issues.length === 0 ? 'completed' : 'needs_review',
+    confidence: Math.round(lowest * 100) / 100,
+    issues,
+  };
+}
+
+/** Document types that legitimately carry no ordinary transaction by themselves. */
+const MAY_BE_EMPTY = new Set(['bank_statement', 'payroll']);
+
+/**
+ * Evaluates a whole extraction: every document must have a confident type, pass its own
+ * consistency check and, unless it is a statement or payroll, have trustworthy transactions.
+ * Notes never contain employee names.
+ */
+export function evaluateExtraction(
+  output: ExtractionOutput,
+  stored: StoredDocument[],
+  options: { minRecordConfidence: number; today?: Date },
+): Evaluation {
+  if (output.documents.length === 0) {
+    return {
+      outcome: 'needs_review',
+      confidence: null,
+      issues: ['No documents were found in the file'],
+    };
+  }
+
+  const issues: string[] = [];
+  let lowest = 1;
+  output.documents.forEach((doc, index) => {
+    const label = `Document ${index + 1} (${doc.type})`;
+    lowest = Math.min(lowest, doc.typeConfidence);
+    if (doc.typeConfidence < options.minRecordConfidence) {
+      issues.push(
+        `${label}: low confidence in the type (${doc.typeConfidence.toFixed(2)})`,
+      );
+    }
+    if (doc.transactions.length === 0) {
+      if (!MAY_BE_EMPTY.has(doc.type))
+        issues.push(`${label}: no transactions were found`);
+    } else {
+      const evaluation = evaluateDocument(doc, options);
+      if (evaluation.confidence !== null)
+        lowest = Math.min(lowest, evaluation.confidence);
+      issues.push(...evaluation.issues.map((issue) => `${label}: ${issue}`));
+    }
+    const consistency = stored[index];
+    if (
+      consistency?.consistency === 'inconsistent' &&
+      consistency.consistencyNotes
+    ) {
+      issues.push(`${label}: ${consistency.consistencyNotes}`);
     }
   });
 

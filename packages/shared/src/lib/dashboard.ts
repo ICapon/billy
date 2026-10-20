@@ -86,7 +86,8 @@ const DAY_MS = 86_400_000;
 
 const toIso = (date: Date): string => date.toISOString().slice(0, 10);
 const parse = (iso: string): Date => new Date(`${iso}T00:00:00Z`);
-const addDays = (iso: string, days: number): string =>
+/** Adds (or subtracts) days to an ISO UTC date. */
+export const addDays = (iso: string, days: number): string =>
   toIso(new Date(parse(iso).getTime() + days * DAY_MS));
 
 /** Inclusive UTC period of a preset ending today. `custom` falls back to the default. */

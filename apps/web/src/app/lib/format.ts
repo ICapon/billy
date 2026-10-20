@@ -1,4 +1,9 @@
-import type { FileStatus, TransactionCategory } from '@org/shared';
+import type {
+  Consistency,
+  DocumentType,
+  FileStatus,
+  TransactionCategory,
+} from '@org/shared';
 
 export function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -108,3 +113,29 @@ export function formatPercent(fraction: number): string {
 
 export const limitReachedMessage =
   'Se alcanzó el límite mensual. Los archivos nuevos se guardan como «En cola (límite alcanzado)» y se analizan al aumentar el límite o al empezar el mes siguiente.';
+
+export const documentTypeLabels: Record<DocumentType, string> = {
+  bank_statement: 'Estado de cuenta',
+  payroll: 'Nómina',
+  invoice: 'Factura',
+  receipt: 'Recibo',
+  sales_report: 'Reporte de ventas',
+  other: 'Otro',
+};
+
+export const UNCLASSIFIED_LABEL = 'Sin clasificar';
+
+export function documentTypeLabel(type: DocumentType | null): string {
+  return type ? documentTypeLabels[type] : UNCLASSIFIED_LABEL;
+}
+
+export const consistencyLabels: Record<Consistency, string> = {
+  ok: 'Cuadra',
+  inconsistent: 'Requiere revisión',
+  unchecked: 'Sin verificar',
+};
+
+/** 1_234_500 micro-USD -> "$1.23" (estimates and limits). */
+export function formatEstimate(microUsd: number): string {
+  return formatCost(microUsd);
+}

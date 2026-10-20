@@ -21,3 +21,19 @@ export class ConfigurationError extends Error {
     this.name = 'ConfigurationError';
   }
 }
+
+/** The chat spent its tool-iteration budget without reaching an answer. */
+export class ChatTurnLimitError extends Error {
+  constructor(message = 'The assistant could not finish the answer') {
+    super(message);
+    this.name = 'ChatTurnLimitError';
+  }
+}
+
+/** The chat did not answer within the configured time. */
+export class ChatTurnTimeoutError extends Error {
+  constructor(message = 'The assistant took too long to answer') {
+    super(message);
+    this.name = 'ChatTurnTimeoutError';
+  }
+}

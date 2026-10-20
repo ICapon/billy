@@ -34,6 +34,12 @@ const envSchema = z.object({
   EMBEDDING_MODEL: z.string().default('voyage-3.5-lite'),
   EMBEDDING_DIMENSIONS: z.coerce.number().int().positive().default(1024),
   VOYAGE_API_KEY: optionalString,
+
+  CHAT_MODEL: z.string().default('claude-sonnet-5-5'),
+  CHAT_MAX_MESSAGE_CHARS: z.coerce.number().int().positive().default(2000),
+  CHAT_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(20),
+  CHAT_CONTEXT_MESSAGES: z.coerce.number().int().positive().default(12),
+  CHAT_TURN_TIMEOUT_MS: z.coerce.number().int().positive().default(45_000),
 });
 
 export interface AppConfig {
@@ -62,6 +68,14 @@ export interface AppConfig {
     model: string;
     dimensions: number;
     apiKey: string | undefined;
+  };
+  chat: {
+    model: string;
+    maxMessageChars: number;
+    rateLimitPerMinute: number;
+    /** Past user/assistant text turns sent to the model with each question. */
+    contextMessages: number;
+    turnTimeoutMs: number;
   };
 }
 
@@ -103,6 +117,13 @@ export function loadConfig(
       model: parsed.EMBEDDING_MODEL,
       dimensions: parsed.EMBEDDING_DIMENSIONS,
       apiKey: parsed.VOYAGE_API_KEY,
+    },
+    chat: {
+      model: parsed.CHAT_MODEL,
+      maxMessageChars: parsed.CHAT_MAX_MESSAGE_CHARS,
+      rateLimitPerMinute: parsed.CHAT_RATE_LIMIT_PER_MINUTE,
+      contextMessages: parsed.CHAT_CONTEXT_MESSAGES,
+      turnTimeoutMs: parsed.CHAT_TURN_TIMEOUT_MS,
     },
   };
 }

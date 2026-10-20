@@ -6,3 +6,8 @@ export * from './lib/costs';
 export * from './lib/jobs';
 export * from './lib/config';
 export * from './lib/dashboard';
+export * from './lib/document-types';
+export * from './lib/documents';
+export * from './lib/consistency';
+export * from './lib/results';
+export * from './lib/chat';

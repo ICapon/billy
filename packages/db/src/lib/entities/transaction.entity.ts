@@ -1,6 +1,7 @@
 import { Column, Entity, Index, JoinColumn, ManyToOne } from 'typeorm';
 import { transactionKinds, type TransactionKind } from '@org/shared';
 import { BusinessFileEntity } from './business-file.entity';
+import { ExtractedDocumentEntity } from './extracted-document.entity';
 import { numberTransformer } from './columns';
 import { OwnedEntity } from './owned-entity';
 
@@ -8,6 +9,7 @@ import { OwnedEntity } from './owned-entity';
 @Index('transactions_owner_date_idx', ['ownerId', 'occurredOn'])
 @Index('transactions_owner_kind_date_idx', ['ownerId', 'kind', 'occurredOn'])
 @Index('transactions_file_idx', ['fileId'])
+@Index('transactions_document_idx', ['documentId'])
 export class TransactionEntity extends OwnedEntity {
   @Column({ name: 'file_id', type: 'uuid' })
   fileId!: string;
@@ -15,6 +17,17 @@ export class TransactionEntity extends OwnedEntity {
   @ManyToOne(() => BusinessFileEntity, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'file_id' })
   file?: BusinessFileEntity;
+
+  /** The logical document this record came from; null for records kept after a re-analysis. */
+  @Column({ name: 'document_id', type: 'uuid', nullable: true })
+  documentId!: string | null;
+
+  @ManyToOne(() => ExtractedDocumentEntity, {
+    nullable: true,
+    onDelete: 'SET NULL',
+  })
+  @JoinColumn({ name: 'document_id' })
+  document?: ExtractedDocumentEntity | null;
 
   /** ISO date (YYYY-MM-DD); pg `date` columns are returned as strings. */
   @Column({ name: 'occurred_on', type: 'date' })

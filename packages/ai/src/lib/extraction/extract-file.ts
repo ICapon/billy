@@ -1,7 +1,7 @@
-import type { ExtractedDocument, ReadingMethod } from '@org/shared';
+import type { ExtractionOutput, ReadingMethod } from '@org/shared';
 import { CostLimitReachedError, UnreadableFileError } from '../errors';
-import { evaluateDocument, type Evaluation } from './confidence';
-import { toRecord } from './money';
+import { evaluateExtraction, type Evaluation } from './confidence';
+import { buildStoredDocuments } from './documents-to-records';
 import { readDigital, type DigitalReadResult } from './readers/digital';
 import { normalizeImage } from './readers/normalize-image';
 import { renderPdfPages } from './readers/pdf-pages';
@@ -10,8 +10,10 @@ import { structureContent, structureText } from './structure';
 import type {
   ExtractFileDeps,
   ExtractFileInput,
+  ExtractFileOptions,
   ExtractFileResult,
   ExtractionRun,
+  StoredDocument,
 } from './types';
 
 /** Swappable readers, so the pipeline can be tested without real PDFs or images. */
@@ -29,7 +31,7 @@ const defaultReaders: Readers = {
 
 interface Attempt {
   tier: ReadingMethod;
-  document: ExtractedDocument;
+  stored: StoredDocument[];
   evaluation: Evaluation;
 }
 
@@ -41,6 +43,7 @@ interface Attempt {
 export async function extractFile(
   input: ExtractFileInput,
   deps: ExtractFileDeps & { readers?: Partial<Readers> },
+  options: ExtractFileOptions = {},
 ): Promise<ExtractFileResult> {
   const readers = { ...defaultReaders, ...deps.readers };
   const { config } = deps;
@@ -61,12 +64,21 @@ export async function extractFile(
     fileName: input.fileName,
     today,
     fallbackCurrency: config.currency,
+    forcedType: options.forcedType,
   };
-  const evaluate = (document: ExtractedDocument) =>
-    evaluateDocument(document, {
-      minRecordConfidence: config.recordMinConfidence,
+  const evaluate = (output: ExtractionOutput) => {
+    const stored = buildStoredDocuments(output, {
+      currency: config.currency,
       today,
     });
+    return {
+      stored,
+      evaluation: evaluateExtraction(output, stored, {
+        minRecordConfidence: config.recordMinConfidence,
+        today,
+      }),
+    };
+  };
 
   const runs: ExtractionRun[] = [];
   const attempts: Attempt[] = [];
@@ -76,7 +88,7 @@ export async function extractFile(
   const runTier = async (
     tier: ReadingMethod,
   ): Promise<{
-    document: ExtractedDocument;
+    document: ExtractionOutput;
     ocrConfidence: number | null;
     issues: string[];
   }> => {
@@ -98,7 +110,7 @@ export async function extractFile(
       rawText = ocr.text || rawText;
       if (!ocrIsUsable(ocr, config.ocrMinConfidence)) {
         return {
-          document: { transactions: [] },
+          document: { documents: [] },
           ocrConfidence: ocr.confidence,
           issues: [
             `OCR confidence too low (${ocr.confidence.toFixed(2)}); escalating to a stronger reader`,
@@ -137,14 +149,14 @@ export async function extractFile(
     const isLast = index === tiers.length - 1;
     try {
       const { document, ocrConfidence, issues } = await runTier(tier);
-      const evaluation = evaluate(document);
+      const { stored, evaluation } = evaluate(document);
       const allIssues = [...issues, ...evaluation.issues];
       const merged: Evaluation = {
         ...evaluation,
         outcome: issues.length > 0 ? 'needs_review' : evaluation.outcome,
         issues: allIssues,
       };
-      attempts.push({ tier, document, evaluation: merged });
+      attempts.push({ tier, stored, evaluation: merged });
       runs.push({
         tier,
         status: merged.outcome === 'completed' ? 'succeeded' : 'low_confidence',
@@ -187,15 +199,35 @@ export async function extractFile(
       : winner,
   );
 
+  const records = best.stored.flatMap((doc) => doc.records);
+
+  // The file's type: the owner's choice, else the document with the most records.
+  const primary = best.stored.reduce<StoredDocument | null>(
+    (winner, doc) =>
+      !winner || doc.records.length > winner.records.length ? doc : winner,
+    null,
+  );
+  const issues = [...best.evaluation.issues];
+  if (
+    options.forcedType &&
+    best.stored.some((doc) => doc.type !== options.forcedType)
+  ) {
+    issues.push(
+      `The file was read as ${options.forcedType} but the model found other document types`,
+    );
+  }
+
   return {
-    outcome: best.evaluation.outcome,
+    outcome: issues.length > 0 ? 'needs_review' : best.evaluation.outcome,
     method: best.tier,
-    transactions: best.document.transactions,
-    records: best.document.transactions.map((t) =>
-      toRecord(t, config.currency),
-    ),
+    documents: best.stored,
+    documentType: options.forcedType ?? primary?.type ?? null,
+    documentTypeConfidence: options.forcedType
+      ? 1
+      : (primary?.typeConfidence ?? null),
+    records,
     rawText,
     runs,
-    issues: best.evaluation.issues,
+    issues,
   };
 }

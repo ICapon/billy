@@ -1,7 +1,9 @@
 import { Column, Entity, Index, JoinColumn, ManyToOne } from 'typeorm';
 import {
+  documentTypes,
   fileStatuses,
   readingMethods,
+  type DocumentType,
   type FileStatus,
   type ReadingMethod,
 } from '@org/shared';
@@ -70,6 +72,30 @@ export class BusinessFileEntity extends OwnedEntity {
   @ManyToOne(() => BusinessFileEntity, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'duplicate_of' })
   duplicateOfFile?: BusinessFileEntity | null;
+
+  /** null = not classified (analyzed before document types existed). */
+  @Column({
+    name: 'document_type',
+    type: 'enum',
+    enum: documentTypes,
+    enumName: 'document_type',
+    nullable: true,
+  })
+  documentType!: DocumentType | null;
+
+  @Column({
+    name: 'document_type_confidence',
+    type: 'numeric',
+    precision: 3,
+    scale: 2,
+    nullable: true,
+    transformer: numberTransformer,
+  })
+  documentTypeConfidence!: number | null;
+
+  /** The owner chose the type: automatic runs only re-read the file for it. */
+  @Column({ name: 'document_type_manual', type: 'boolean', default: false })
+  documentTypeManual!: boolean;
 
   @Column({ name: 'uploaded_at', type: 'timestamptz', default: () => 'now()' })
   uploadedAt!: Date;

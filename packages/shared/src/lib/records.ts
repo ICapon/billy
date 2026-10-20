@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { consistencySchema, documentTypeSchema } from './document-types';
 import { businessFileSchema } from './files';
 
 export const transactionKinds = ['expense', 'income'] as const;
@@ -75,8 +76,33 @@ export const transactionUpdateSchema = z
   .partial();
 export type TransactionUpdate = z.infer<typeof transactionUpdateSchema>;
 
+/** A logical document of a file as shown on the file detail (figures in minor units). */
+export const fileDocumentSchema = z.object({
+  id: z.uuid(),
+  type: documentTypeSchema,
+  typeConfidence: z.number().min(0).max(1),
+  periodStart: z.iso.date().nullable(),
+  periodEnd: z.iso.date().nullable(),
+  issueDate: z.iso.date().nullable(),
+  currency: z.string().length(3),
+  consistency: consistencySchema,
+  consistencyNotes: z.string().nullable(),
+  /** Validated by the shared schema of the type (`parseDetails`) when it is used. */
+  details: z.record(z.string(), z.unknown()),
+  payrollLines: z.array(
+    z.object({
+      employeeName: z.string(),
+      grossMinor: z.number().int().nonnegative(),
+      deductionsMinor: z.number().int().nonnegative(),
+      netMinor: z.number().int().nonnegative(),
+    }),
+  ),
+});
+export type FileDocument = z.infer<typeof fileDocumentSchema>;
+
 export const businessFileDetailSchema = businessFileSchema.extend({
   records: z.array(transactionSchema),
+  documents: z.array(fileDocumentSchema),
 });
 export type BusinessFileDetail = z.infer<typeof businessFileDetailSchema>;
 
@@ -112,11 +138,6 @@ export const extractedTransactionSchema = z.object({
 });
 export type ExtractedTransaction = z.infer<typeof extractedTransactionSchema>;
 
-export const extractedDocumentSchema = z.object({
-  transactions: z.array(extractedTransactionSchema),
-});
-export type ExtractedDocument = z.infer<typeof extractedDocumentSchema>;
-
 export const groupByValues = ['week', 'month'] as const;
 export const groupBySchema = z.enum(groupByValues);
 
@@ -127,6 +148,8 @@ export const recordsQuerySchema = z.object({
   category: transactionCategorySchema.optional(),
   product: z.string().trim().min(1).max(200).optional(),
   fileId: z.uuid().optional(),
+  documentType: documentTypeSchema.optional(),
+  documentId: z.uuid().optional(),
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
 });

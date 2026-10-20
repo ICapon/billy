@@ -4,9 +4,12 @@ import { ActivitySection } from '../src/app/components/dashboard/activity-sectio
 import { PeriodPicker } from '../src/app/components/dashboard/period-picker';
 import DashboardPage from '../src/app/(app)/dashboard/page';
 import * as api from '../src/app/lib/files-api';
+import * as chatApi from '../src/app/lib/chat-api';
 
 jest.mock('../src/app/lib/files-api');
+jest.mock('../src/app/lib/chat-api');
 const mocked = api as jest.Mocked<typeof api>;
+const mockedChat = chatApi as jest.Mocked<typeof chatApi>;
 
 const emptyActivity: ActivitySummary = {
   from: '2026-09-19',
@@ -76,6 +79,11 @@ beforeEach(() => {
   mocked.getTotals.mockResolvedValue([]);
   mocked.getProducts.mockResolvedValue([]);
   mocked.getCostSummary.mockResolvedValue(cost);
+  mockedChat.getChatStatus.mockResolvedValue({
+    enabled: true,
+    hasDocuments: true,
+    suggestions: [],
+  });
 });
 
 describe('ActivitySection', () => {
